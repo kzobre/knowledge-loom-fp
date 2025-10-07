@@ -6,10 +6,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Edit, Trash2, Play, Link as LinkIcon, FileUp, ToggleLeft, ToggleRight, RefreshCw, AlertTriangle, AlertCircle, ChevronDown } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Edit,
+  Trash2,
+  Play,
+  Link as LinkIcon,
+  FileUp,
+  ToggleLeft,
+  ToggleRight,
+  RefreshCw,
+  AlertTriangle,
+  AlertCircle,
+  ChevronDown,
+} from "lucide-react";
 import { InstructionsToggle } from "@/components/InstructionsToggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -22,13 +43,14 @@ const Feeds = () => {
     name: "",
     url: "",
     credibility_score: 5,
-    topic_keywords: ""
+    topic_keywords: "",
   });
 
   const [manualSourceDialogOpen, setManualSourceDialogOpen] = useState(false);
   const [manualSourceType, setManualSourceType] = useState<"url" | "pdf">("url");
   const [manualUrl, setManualUrl] = useState("");
   const [manualPdfFile, setManualPdfFile] = useState<File | null>(null);
+  const [creatingManualSource, setCreatingManualSource] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"rss" | "manual">("rss");
   const [expandedFeeds, setExpandedFeeds] = useState<Set<string>>(new Set());
@@ -56,10 +78,7 @@ const Feeds = () => {
   };
 
   const loadFeeds = async () => {
-    const { data, error } = await supabase
-      .from("source_feeds")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("source_feeds").select("*").order("created_at", { ascending: false });
 
     if (error) {
       toast.error("Failed to load feeds");
@@ -76,7 +95,10 @@ const Feeds = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const keywords = formData.topic_keywords.split(",").map(k => k.trim()).filter(Boolean);
+    const keywords = formData.topic_keywords
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean);
 
     if (editingFeed) {
       const { error } = await supabase
@@ -85,7 +107,7 @@ const Feeds = () => {
           name: formData.name,
           url: formData.url,
           credibility_score: formData.credibility_score,
-          topic_keywords: keywords
+          topic_keywords: keywords,
         })
         .eq("id", editingFeed.id);
 
@@ -99,12 +121,14 @@ const Feeds = () => {
     } else {
       const { data: inserted, error } = await supabase
         .from("source_feeds")
-        .insert([{
-          name: formData.name,
-          url: formData.url,
-          credibility_score: formData.credibility_score,
-          topic_keywords: keywords
-        }])
+        .insert([
+          {
+            name: formData.name,
+            url: formData.url,
+            credibility_score: formData.credibility_score,
+            topic_keywords: keywords,
+          },
+        ])
         .select()
         .single();
 
@@ -125,10 +149,7 @@ const Feeds = () => {
   };
 
   const toggleFeed = async (feed: any) => {
-    const { error } = await supabase
-      .from("source_feeds")
-      .update({ is_active: !feed.is_active })
-      .eq("id", feed.id);
+    const { error } = await supabase.from("source_feeds").update({ is_active: !feed.is_active }).eq("id", feed.id);
 
     if (error) {
       toast.error("Failed to toggle feed");
@@ -142,11 +163,8 @@ const Feeds = () => {
     if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
       return;
     }
-    
-    const { error } = await supabase
-      .from("source_feeds")
-      .delete()
-      .eq("id", id);
+
+    const { error } = await supabase.from("source_feeds").delete().eq("id", id);
 
     if (error) {
       toast.error("Failed to delete feed");
@@ -162,16 +180,16 @@ const Feeds = () => {
       name: feed.name,
       url: feed.url,
       credibility_score: feed.credibility_score,
-      topic_keywords: feed.topic_keywords?.join(", ") || ""
+      topic_keywords: feed.topic_keywords?.join(", ") || "",
     });
     setIsDialogOpen(true);
   };
 
   const triggerFeedPull = async (feedId: string) => {
     toast.loading("Creating reference cards from feed...");
-    
+
     const { error } = await supabase.functions.invoke("pull-rss-feed", {
-      body: { feedId }
+      body: { feedId },
     });
 
     if (error) {
@@ -183,13 +201,14 @@ const Feeds = () => {
   };
 
   const toggleFeedExpanded = (id: string) => {
-    setExpandedFeeds(prev => {
+    setExpandedFeeds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
- 
+
   const createManualSource = async () => {
     if (manualSourceType === "url" && !manualUrl.trim()) {
       toast.error("Please enter a URL");
@@ -200,35 +219,60 @@ const Feeds = () => {
       return;
     }
 
-    toast.loading("Creating reference card from source...");
+    setCreatingManualSource(true);
+    console.log("🟡 Starting manual source creation...");
+    const toastId = toast.loading("Creating reference card from source...");
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      toast.error("You must be logged in to create sources");
-      return;
-    }
-
-    const { error } = await supabase.functions.invoke("create-manual-source", {
-      body: {
-        type: manualSourceType,
-        url: manualSourceType === "url" ? manualUrl : undefined,
-        user_id: session.user.id
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("You must be logged in to create sources");
+        return;
       }
-    });
 
-    if (error) {
-      toast.error("Failed to create source: " + error.message);
-    } else {
-      toast.success("Reference card created and processing!");
-      setManualSourceDialogOpen(false);
-      setManualUrl("");
-      setManualPdfFile(null);
-      loadFeeds();
+      console.log("📤 Calling edge function with:", {
+        type: manualSourceType,
+        url: manualUrl,
+        user_id: session.user.id,
+      });
+
+      const { data, error } = await supabase.functions.invoke("create-manual-source", {
+        body: {
+          type: manualSourceType,
+          url: manualSourceType === "url" ? manualUrl : undefined,
+          user_id: session.user.id,
+        },
+      });
+
+      console.log("📥 Edge function response:", { data, error });
+
+      if (error) {
+        console.error("❌ Edge function error:", error);
+        toast.error("Failed to create source: " + error.message, { id: toastId });
+      } else {
+        console.log("✅ Manual source created successfully:", data);
+        toast.success("Reference card created and processing!", { id: toastId });
+        setManualSourceDialogOpen(false);
+        setManualUrl("");
+        setManualPdfFile(null);
+        // Wait a moment then reload to see the new card
+        setTimeout(() => {
+          loadFeeds();
+          navigate("/cards"); // Navigate to see the new card
+        }, 1500);
+      }
+    } catch (error) {
+      console.error("💥 Unexpected error:", error);
+      toast.error("Unexpected error: " + error.message, { id: toastId });
+    } finally {
+      setCreatingManualSource(false);
     }
   };
 
-  const rssFeeds = feeds.filter(f => f.feed_type === 'rss');
-  const manualSources = feeds.filter(f => f.feed_type === 'manual');
+  const rssFeeds = feeds.filter((f) => f.feed_type === "rss");
+  const manualSources = feeds.filter((f) => f.feed_type === "manual");
 
   return (
     <div className="min-h-screen bg-background">
@@ -292,8 +336,19 @@ const Feeds = () => {
                     </div>
                   )}
 
-                  <Button onClick={createManualSource} className="w-full" disabled={manualSourceType === "pdf"}>
-                    Create Reference Card
+                  <Button
+                    onClick={createManualSource}
+                    className="w-full"
+                    disabled={manualSourceType === "pdf" || creatingManualSource}
+                  >
+                    {creatingManualSource ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      "Create Reference Card"
+                    )}
                   </Button>
                 </div>
               </DialogContent>
@@ -301,7 +356,12 @@ const Feeds = () => {
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <Button onClick={() => { setEditingFeed(null); setFormData({ name: "", url: "", credibility_score: 5, topic_keywords: "" }); }}>
+                <Button
+                  onClick={() => {
+                    setEditingFeed(null);
+                    setFormData({ name: "", url: "", credibility_score: 5, topic_keywords: "" });
+                  }}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   Add RSS Feed
                 </Button>
@@ -317,7 +377,7 @@ const Feeds = () => {
                     <Input
                       id="name"
                       value={formData.name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                       required
                     />
                   </div>
@@ -327,7 +387,7 @@ const Feeds = () => {
                       id="url"
                       type="url"
                       value={formData.url}
-                      onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, url: e.target.value }))}
                       required
                     />
                   </div>
@@ -339,7 +399,9 @@ const Feeds = () => {
                       min="1"
                       max="10"
                       value={formData.credibility_score}
-                      onChange={(e) => setFormData(prev => ({ ...prev, credibility_score: parseInt(e.target.value) }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, credibility_score: parseInt(e.target.value) }))
+                      }
                     />
                   </div>
                   <div>
@@ -347,7 +409,7 @@ const Feeds = () => {
                     <Input
                       id="keywords"
                       value={formData.topic_keywords}
-                      onChange={(e) => setFormData(prev => ({ ...prev, topic_keywords: e.target.value }))}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, topic_keywords: e.target.value }))}
                       placeholder="AI, Technology, Healthcare"
                     />
                   </div>
@@ -364,7 +426,7 @@ const Feeds = () => {
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-4">Feed Manager</h1>
 
-        <InstructionsToggle 
+        <InstructionsToggle
           instructions={`Feed Manager helps you bring content into Insight Forge:
 
 1. RSS Feeds: Add RSS feed URLs to automatically pull articles
@@ -395,7 +457,7 @@ Reference cards are created from your sources and can be used for content genera
           </Card>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "rss" | "manual")}> 
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "rss" | "manual")}>
           <TabsList className="mb-4">
             <TabsTrigger value="rss">RSS Feeds</TabsTrigger>
             <TabsTrigger value="manual">Manual Sources</TabsTrigger>
@@ -419,7 +481,12 @@ Reference cards are created from your sources and can be used for content genera
                             <ToggleLeft className="h-5 w-5" />
                           )}
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => triggerFeedPull(feed.id)} disabled={!feed.is_active}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => triggerFeedPull(feed.id)}
+                          disabled={!feed.is_active}
+                        >
                           <RefreshCw className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => openEditDialog(feed)}>
@@ -438,7 +505,9 @@ Reference cards are created from your sources and can be used for content genera
                       </Badge>
                       <Badge variant="outline">Credibility: {feed.credibility_score}/10</Badge>
                       {feed.topic_keywords?.map((keyword: string) => (
-                        <Badge key={keyword} variant="outline">{keyword}</Badge>
+                        <Badge key={keyword} variant="outline">
+                          {keyword}
+                        </Badge>
                       ))}
                     </div>
                     {feed.last_pulled_at && (
@@ -449,7 +518,9 @@ Reference cards are created from your sources and can be used for content genera
 
                     <div className="mt-3">
                       <Button variant="ghost" size="sm" onClick={() => toggleFeedExpanded(feed.id)}>
-                        <ChevronDown className={`h-4 w-4 mr-1 transition-transform ${expandedFeeds.has(feed.id) ? 'rotate-180' : ''}`} />
+                        <ChevronDown
+                          className={`h-4 w-4 mr-1 transition-transform ${expandedFeeds.has(feed.id) ? "rotate-180" : ""}`}
+                        />
                         Reference Cards ({refCardsByFeed[feed.id]?.length ?? 0})
                       </Button>
                       {expandedFeeds.has(feed.id) && (
@@ -457,14 +528,14 @@ Reference cards are created from your sources and can be used for content genera
                           {(refCardsByFeed[feed.id] ?? []).map((rc: any) => (
                             <div key={rc.id} className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                {rc.content_quality === 'error' ? (
+                                {rc.content_quality === "error" ? (
                                   <AlertTriangle className="h-4 w-4 text-destructive" />
-                                ) : rc.content_quality === 'partial' || rc.content_quality === 'title_only' ? (
+                                ) : rc.content_quality === "partial" || rc.content_quality === "title_only" ? (
                                   <AlertCircle className="h-4 w-4 text-amber-500" />
                                 ) : (
                                   <Badge variant="outline">Good</Badge>
                                 )}
-                                <span className="text-sm">{rc.title || 'Untitled'}</span>
+                                <span className="text-sm">{rc.title || "Untitled"}</span>
                               </div>
                               <Button variant="outline" size="sm" onClick={() => navigate(`/cards/${rc.id}`)}>
                                 Open
@@ -500,11 +571,15 @@ Reference cards are created from your sources and can be used for content genera
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">Added: {new Date(feed.created_at).toLocaleDateString()}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Added: {new Date(feed.created_at).toLocaleDateString()}
+                    </p>
 
                     <div className="mt-3">
                       <Button variant="ghost" size="sm" onClick={() => toggleFeedExpanded(feed.id)}>
-                        <ChevronDown className={`h-4 w-4 mr-1 transition-transform ${expandedFeeds.has(feed.id) ? 'rotate-180' : ''}`} />
+                        <ChevronDown
+                          className={`h-4 w-4 mr-1 transition-transform ${expandedFeeds.has(feed.id) ? "rotate-180" : ""}`}
+                        />
                         Reference Cards ({refCardsByFeed[feed.id]?.length ?? 0})
                       </Button>
                       {expandedFeeds.has(feed.id) && (
@@ -512,14 +587,14 @@ Reference cards are created from your sources and can be used for content genera
                           {(refCardsByFeed[feed.id] ?? []).map((rc: any) => (
                             <div key={rc.id} className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                {rc.content_quality === 'error' ? (
+                                {rc.content_quality === "error" ? (
                                   <AlertTriangle className="h-4 w-4 text-destructive" />
-                                ) : rc.content_quality === 'partial' || rc.content_quality === 'title_only' ? (
+                                ) : rc.content_quality === "partial" || rc.content_quality === "title_only" ? (
                                   <AlertCircle className="h-4 w-4 text-amber-500" />
                                 ) : (
                                   <Badge variant="outline">Good</Badge>
                                 )}
-                                <span className="text-sm">{rc.title || 'Untitled'}</span>
+                                <span className="text-sm">{rc.title || "Untitled"}</span>
                               </div>
                               <Button variant="outline" size="sm" onClick={() => navigate(`/cards/${rc.id}`)}>
                                 Open
