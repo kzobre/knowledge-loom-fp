@@ -26,11 +26,17 @@ serve(async (req) => {
       );
     }
 
-    // Fetch article content (simplified)
+    console.log("Fetching content from:", url);
+
+    // Fetch article content
     const articleResponse = await fetch(url);
+    if (!articleResponse.ok) {
+      throw new Error(`Failed to fetch URL: ${articleResponse.status}`);
+    }
+    
     const articleHtml = await articleResponse.text();
 
-    // Extract title and text (very simplified - use proper HTML parser in production)
+    // Extract title and text
     const titleMatch = /<title>(.*?)<\/title>/i.exec(articleHtml);
     const title = titleMatch?.[1] || "Untitled Article";
     
@@ -40,31 +46,56 @@ serve(async (req) => {
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
-      .trim()
-      .substring(0, 1000);
+      .trim();
+
+    console.log("Extracted title:", title);
+    console.log("Content length:", textContent.length);
+
+    // Create entry in source_feeds for tracking manual sources
+    const { data: feedData, error: feedError } = await supabase
+      .from("source_feeds")
+      .insert({
+        name: title,
+        url: url,
+        feed_type: "manual",
+        is_active: true,
+        credibility_score: 5
+      })
+      .select()
+      .single();
+
+    if (feedError) {
+      console.error("Failed to create source feed entry:", feedError);
+    }
 
     // Create reference card
-    const { error: insertError } = await supabase
+    const { data: cardData, error: insertError } = await supabase
       .from("reference_cards")
       .insert({
         title,
         original_text: textContent,
         source_url: url,
         source_type: "manual",
+        source_feed_id: feedData?.id,
         status: "needs_review",
         global_relevance_score: 5,
-      });
+      })
+      .select()
+      .single();
 
     if (insertError) {
+      console.error("Failed to create reference card:", insertError);
       throw insertError;
     }
 
+    console.log("Successfully created reference card:", cardData?.id);
+
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({ success: true, cardId: cardData?.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error in create-manual-source:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

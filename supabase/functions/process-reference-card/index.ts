@@ -26,6 +26,8 @@ serve(async (req) => {
       );
     }
 
+    console.log("Processing card:", cardId);
+
     // Get card with template questions
     const { data: card, error: cardError } = await supabase
       .from("reference_cards")
@@ -34,17 +36,21 @@ serve(async (req) => {
       .single();
 
     if (cardError || !card) {
+      console.error("Card not found:", cardError);
       return new Response(
-        JSON.stringify({ error: "Card not found" }),
+        JSON.stringify({ error: "Card not found: " + (cardError?.message || "Unknown") }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log("Card found:", card.title);
 
     // Get global questions from profile
     const { data: profile } = await supabase
       .from("profiles")
       .select("global_insight_questions, active_question_indices")
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     let questions: string[] = [];
     
@@ -55,14 +61,12 @@ serve(async (req) => {
       questions = profile.active_question_indices.map((idx: number) => 
         profile.global_insight_questions[idx]
       ).filter(Boolean);
+    } else if (profile?.global_insight_questions && Array.isArray(profile.global_insight_questions)) {
+      // Use all global questions if no active indices specified
+      questions = profile.global_insight_questions.filter((q: any) => typeof q === 'string' && q.trim());
     }
 
-    if (questions.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "No questions configured" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    console.log("Questions found:", questions.length);
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -84,15 +88,14 @@ serve(async (req) => {
       contentQuality = "partial";
     }
 
-    // Generate summary and answer questions
-    const prompt = `Analyze this article and provide:
-1. A brief summary (2-3 sentences)
-2. Answer each of these questions based on the content:
-
-${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+    // Generate summary and optionally answer questions
+    let prompt = `Analyze this article and provide a brief summary (2-3 sentences).
 
 Article Title: ${card.title}
-Content: ${card.original_text}
+Content: ${card.original_text}`;
+
+    if (questions.length > 0) {
+      prompt += `\n\nAlso answer these questions based on the content:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
 Respond in JSON format:
 {
@@ -103,6 +106,14 @@ Respond in JSON format:
     ...
   }
 }`;
+    } else {
+      prompt += `\n\nRespond in JSON format:
+{
+  "summary": "your summary"
+}`;
+    }
+
+    console.log("Calling AI API...");
 
     try {
       const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -117,26 +128,38 @@ Respond in JSON format:
             { role: "system", content: "You are a content analyst. Always respond with valid JSON." },
             { role: "user", content: prompt }
           ],
-          response_format: { type: "json_object" }
         }),
       });
 
       if (!aiResponse.ok) {
         const errorText = await aiResponse.text();
         console.error("AI API error:", aiResponse.status, errorText);
-        throw new Error(`AI processing failed: ${aiResponse.status}`);
+        throw new Error(`AI processing failed: ${aiResponse.status} - ${errorText}`);
       }
 
       const aiData = await aiResponse.json();
+      console.log("AI response received");
+
       const content = aiData.choices[0].message.content;
-      const result = JSON.parse(content);
+      
+      // Try to parse JSON, but handle if it's not JSON
+      let result;
+      try {
+        result = JSON.parse(content);
+      } catch (parseError) {
+        console.error("Failed to parse AI response as JSON:", content);
+        // If it's not JSON, use the content as the summary
+        result = { summary: content, answers: {} };
+      }
+
+      console.log("Updating card with results...");
 
       // Update card with results
       const { error: updateError } = await supabase
         .from("reference_cards")
         .update({
           ai_summary: result.summary,
-          insight_answers: result.answers,
+          insight_answers: result.answers || {},
           content_quality: contentQuality,
           content_warning: contentWarning,
           status: "active"
@@ -144,14 +167,17 @@ Respond in JSON format:
         .eq("id", cardId);
 
       if (updateError) {
-        throw new Error("Failed to update card");
+        console.error("Failed to update card:", updateError);
+        throw new Error("Failed to update card: " + updateError.message);
       }
+
+      console.log("Card updated successfully");
 
       return new Response(
         JSON.stringify({ 
           success: true, 
           summary: result.summary,
-          answers: result.answers,
+          answers: result.answers || {},
           contentQuality,
           contentWarning 
         }),
@@ -165,7 +191,7 @@ Respond in JSON format:
       await supabase
         .from("reference_cards")
         .update({
-          content_warning: "Error: Unable to process content with AI",
+          content_warning: "Error: Unable to process content with AI - " + (aiError instanceof Error ? aiError.message : "Unknown error"),
           content_quality: "error",
           status: "needs_review"
         })
@@ -178,7 +204,7 @@ Respond in JSON format:
     }
 
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error in process-reference-card:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

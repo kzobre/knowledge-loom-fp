@@ -62,8 +62,9 @@ const ReferenceCards = () => {
 
   const processCard = async (cardId: string) => {
     setProcessingCards(prev => new Set(prev).add(cardId));
+    toast.loading("Processing with AI...");
     
-    const { error } = await supabase.functions.invoke("process-reference-card", {
+    const { data, error } = await supabase.functions.invoke("process-reference-card", {
       body: { cardId }
     });
 
@@ -74,9 +75,13 @@ const ReferenceCards = () => {
     });
 
     if (error) {
-      toast.error("Failed to process card: " + error.message);
+      console.error("Process card error:", error);
+      toast.error("Failed to process card: " + (error.message || "Unknown error"));
+    } else if (data?.error) {
+      console.error("Process card data error:", data.error);
+      toast.error("AI processing failed: " + data.error);
     } else {
-      toast.success("Card processed successfully");
+      toast.success("Card processed successfully!");
       loadCards();
     }
   };
