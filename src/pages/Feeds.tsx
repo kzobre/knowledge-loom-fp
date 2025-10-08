@@ -225,16 +225,25 @@ const Feeds = () => {
     const toastId = toast.loading("Creating reference card from source...");
 
     try {
+      // 🎯 Get user session first
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("You must be logged in to create sources", { id: toastId });
+        setCreatingManualSource(false);
+        return;
+      }
+
       console.log("📤 Calling edge function with:", {
         type: manualSourceType,
         url: manualUrl,
+        user_id: session.user.id,
       });
 
       const { data, error } = await supabase.functions.invoke("create-manual-source", {
         body: {
           type: manualSourceType,
           url: manualSourceType === "url" ? manualUrl : undefined,
-          // 🎯 NO user_id parameter needed
+          user_id: session.user.id,
         },
       });
 

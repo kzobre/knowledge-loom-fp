@@ -20,11 +20,14 @@ serve(async (req) => {
     const { feedId } = await req.json();
 
     if (!feedId) {
+      console.error("❌ Missing feedId");
       return new Response(
         JSON.stringify({ error: "feedId is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log("🔄 Processing RSS feed:", feedId);
 
     // Get feed details with default template
     const { data: feed, error: feedError } = await supabase
@@ -34,11 +37,14 @@ serve(async (req) => {
       .single();
 
     if (feedError || !feed) {
+      console.error("❌ Feed not found:", feedError);
       return new Response(
-        JSON.stringify({ error: "Feed not found" }),
+        JSON.stringify({ error: "Feed not found", details: feedError?.message }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log("✅ Feed found:", feed.name, "User ID:", feed.user_id);
 
     // Fetch RSS feed
     const rssResponse = await fetch(feed.url);
@@ -87,8 +93,9 @@ serve(async (req) => {
         .single();
 
       if (insertError) {
-        console.error("Failed to insert reference card:", insertError);
+        console.error("❌ Failed to insert reference card:", insertError);
       } else if (cardData) {
+        console.log("✅ Created card:", cardData.id, "-", cardData.title);
         createdCardIds.push(cardData.id);
       }
     }
