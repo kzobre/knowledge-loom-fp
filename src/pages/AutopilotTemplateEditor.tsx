@@ -26,7 +26,7 @@ const AutopilotTemplateEditor = () => {
     frequency: "weekly",
     source_feed_ids: [] as string[],
     topic_filters: [] as string[],
-    output_format: "blog_post", // Try common allowed values
+    output_format: "text", // Use the correct allowed values: "text" or "visual"
     use_global_questions: true,
     custom_template_id: null as string | null,
   });
@@ -74,7 +74,7 @@ const AutopilotTemplateEditor = () => {
         frequency: data.frequency || "weekly",
         source_feed_ids: data.source_feed_ids || [],
         topic_filters: data.topic_filters || [],
-        output_format: data.output_format || "blog_post",
+        output_format: data.output_format || "text", // Use correct default
         use_global_questions: data.use_global_questions ?? true,
         custom_template_id: data.custom_template_id || null,
       });
@@ -130,12 +130,6 @@ const AutopilotTemplateEditor = () => {
     try {
       console.log("🟡 Saving template with data:", formData);
 
-      // Try different output_format values that might be allowed
-      let outputFormat = formData.output_format;
-
-      // If the current format fails, try alternatives
-      const formatAttempts = ["blog_post", "article", "newsletter", "social_media", "report", "email", "post"];
-
       if (isEditing) {
         // Update existing template
         const { data, error } = await supabase
@@ -146,7 +140,7 @@ const AutopilotTemplateEditor = () => {
             frequency: formData.frequency,
             source_feed_ids: formData.source_feed_ids,
             topic_filters: formData.topic_filters,
-            output_format: outputFormat,
+            output_format: formData.output_format,
             use_global_questions: formData.use_global_questions,
             custom_template_id: formData.custom_template_id,
             updated_at: new Date().toISOString(),
@@ -161,41 +155,29 @@ const AutopilotTemplateEditor = () => {
         console.log("✅ Template updated:", data);
         toast.success("Template updated successfully");
       } else {
-        // Try creating with the current format first
-        let createError = null;
-        let createdData = null;
+        // Create new template
+        const { data, error } = await supabase
+          .from("autopilot_templates")
+          .insert([
+            {
+              name: formData.name,
+              is_active: formData.is_active,
+              frequency: formData.frequency,
+              source_feed_ids: formData.source_feed_ids,
+              topic_filters: formData.topic_filters,
+              output_format: formData.output_format,
+              use_global_questions: formData.use_global_questions,
+              custom_template_id: formData.custom_template_id,
+              user_id: session.user.id,
+            },
+          ])
+          .select();
 
-        for (const format of formatAttempts) {
-          const { data, error } = await supabase
-            .from("autopilot_templates")
-            .insert([
-              {
-                name: formData.name,
-                is_active: formData.is_active,
-                frequency: formData.frequency,
-                source_feed_ids: formData.source_feed_ids,
-                topic_filters: formData.topic_filters,
-                output_format: format,
-                use_global_questions: formData.use_global_questions,
-                custom_template_id: formData.custom_template_id,
-                user_id: session.user.id,
-              },
-            ])
-            .select();
-
-          if (!error) {
-            createdData = data;
-            break;
-          }
-          createError = error;
+        if (error) {
+          console.error("❌ Insert error:", error);
+          throw error;
         }
-
-        if (createError && !createdData) {
-          console.error("❌ All format attempts failed:", createError);
-          throw createError;
-        }
-
-        console.log("✅ Template created:", createdData);
+        console.log("✅ Template created:", data);
         toast.success("Template created successfully");
       }
 
@@ -267,13 +249,8 @@ const AutopilotTemplateEditor = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="blog_post">Blog Post</SelectItem>
-                      <SelectItem value="article">Article</SelectItem>
-                      <SelectItem value="newsletter">Newsletter</SelectItem>
-                      <SelectItem value="social_media">Social Media</SelectItem>
-                      <SelectItem value="report">Report</SelectItem>
-                      <SelectItem value="email">Email</SelectItem>
-                      <SelectItem value="post">Post</SelectItem>
+                      <SelectItem value="text">Text Content</SelectItem>
+                      <SelectItem value="visual">Visual Content</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
