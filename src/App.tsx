@@ -13,6 +13,7 @@ import CreateContent from "./pages/CreateContent";
 import Drafts from "./pages/Drafts";
 import DraftDetail from "./pages/DraftDetail";
 import AutopilotTemplates from "./pages/AutopilotTemplates";
+import AutopilotTemplateEditor from "./pages/AutopilotTemplateEditor";
 import QuestionSettings from "./pages/QuestionSettings";
 import Auth from "./pages/Auth";
 
@@ -37,6 +38,8 @@ const App = () => (
           <Route path="/drafts" element={<Drafts />} />
           <Route path="/drafts/:id" element={<DraftDetail />} />
           <Route path="/autopilot" element={<AutopilotTemplates />} />
+          <Route path="/autopilot/new" element={<AutopilotTemplateEditor />} />
+          <Route path="/autopilot/:id/edit" element={<AutopilotTemplateEditor />} />
           <Route path="/questions" element={<QuestionSettings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
