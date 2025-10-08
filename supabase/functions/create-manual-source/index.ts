@@ -31,19 +31,11 @@ serve(async (req) => {
     const requestBody = await req.json();
     console.log("📦 Request body:", requestBody);
 
-    const { type, url, user_id } = requestBody;
+    const { type, url } = requestBody;
 
     if (type !== "url" || !url) {
       console.log("❌ Invalid parameters:", { type, url });
       return new Response(JSON.stringify({ error: "Only URL type is supported currently" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (!user_id) {
-      console.log("❌ Missing user_id");
-      return new Response(JSON.stringify({ error: "User ID is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -117,7 +109,7 @@ serve(async (req) => {
         feed_type: "manual",
         is_active: true,
         credibility_score: 5,
-        user_id: user_id,
+        user_id: "00000000-0000-0000-0000-000000000000", // Default user ID for no auth
       })
       .select()
       .single();
@@ -141,7 +133,7 @@ serve(async (req) => {
         source_feed_id: feedData?.id,
         status: "processing",
         global_relevance_score: 5,
-        user_id: user_id,
+        user_id: "00000000-0000-0000-0000-000000000000", // Default user ID for no auth
       })
       .select()
       .single();
