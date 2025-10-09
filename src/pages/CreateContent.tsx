@@ -145,11 +145,11 @@ const CreateContent = () => {
         return;
       }
 
-      // Create draft with enhanced content - USE EXISTING COLUMNS ONLY
+      // Create draft with enhanced content
       const { data: draftData, error: draftError } = await supabase
         .from("drafts")
         .insert({
-          // Use seed_insight as the title since title column doesn't exist yet
+          title: data.title || direction.title,
           seed_insight: data.title || direction.title,
           body: data.content,
           status: "draft",
@@ -159,7 +159,7 @@ const CreateContent = () => {
           content_type: "blog_post",
           revision_count: 0,
           approval_status: "pending"
-        })
+        } as any)
         .select()
         .single();
 
@@ -168,6 +168,7 @@ const CreateContent = () => {
         const { data: draftData2, error: error2 } = await supabase
           .from("drafts")
           .insert({
+            title: data.title || direction.title,
             seed_insight: data.title || direction.title,
             body: data.content,
             status: "draft",
@@ -176,7 +177,7 @@ const CreateContent = () => {
             selected_direction: direction,
             revision_count: 0,
             approval_status: "pending"
-          })
+          } as any)
           .select()
           .single();
 
@@ -214,11 +215,11 @@ const CreateContent = () => {
     } = await supabase.auth.getSession();
 
     try {
-      // Use seed_insight as the title since title column doesn't exist
       const { data: draftData, error } = await supabase
         .from("drafts")
         .insert({
-          seed_insight: direction.title, // Using seed_insight as title
+          title: direction.title,
+          seed_insight: direction.title,
           body: `# ${direction.title}\n\n${direction.description}\n\n**Angle:** ${direction.angle}\n\n**Original Insight:** ${seedInsight}`,
           status: "draft",
           user_id: session?.user?.id,
@@ -227,7 +228,7 @@ const CreateContent = () => {
           content_type: "blog_post",
           revision_count: 0,
           approval_status: "pending"
-        })
+        } as any)
         .select()
         .single();
 
@@ -236,7 +237,8 @@ const CreateContent = () => {
         const { data: draftData2, error: error2 } = await supabase
           .from("drafts")
           .insert({
-            seed_insight: direction.title, // Using seed_insight as title
+            title: direction.title,
+            seed_insight: direction.title,
             body: `# ${direction.title}\n\n${direction.description}\n\n**Angle:** ${direction.angle}\n\n**Original Insight:** ${seedInsight}`,
             status: "draft",
             user_id: session?.user?.id,
@@ -244,7 +246,7 @@ const CreateContent = () => {
             selected_direction: direction,
             revision_count: 0,
             approval_status: "pending"
-          })
+          } as any)
           .select()
           .single();
 

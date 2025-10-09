@@ -410,9 +410,9 @@ const Review = () => {
                       
                       <div className="text-xs text-muted-foreground mt-3">
                         Created {new Date(draft.created_at).toLocaleDateString()}
-                        {draft.approval_status !== "pending" && (
+                        {draft.approval_status !== "pending" && (draft as any).reviewed_at && (
                           <span className="ml-2">
-                            • {draft.approval_status} on {new Date(draft.reviewed_at).toLocaleDateString()}
+                            • {draft.approval_status} on {new Date((draft as any).reviewed_at).toLocaleDateString()}
                           </span>
                         )}
                       </div>
