@@ -98,33 +98,6 @@ const AutopilotTemplates = () => {
     }
   };
 
- // ❌ REPLACE THIS WHOLE FUNCTION (lines ~78-100):
-const testRunTemplate = async (template: any) => {
-  toast.info("Running test generation...");
-  
-  try {
-    const { data, error } = await supabase.functions.invoke("pull-rss-feed", {
-      body: {
-        templateId: template.id,
-        isTestRun: true
-      }
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    if (data.success) {
-      toast.success("Test run completed! Check your review queue for the new draft.");
-      loadTemplates(); // Refresh to show new draft count
-    } else {
-      toast.error("Test run failed: " + (data.error || "Unknown error"));
-    }
-  } catch (error) {
-    console.error("Test run error:", error);
-    toast.error("Test run failed");
-  }
-};
 
 // ✅ WITH THIS UPDATED VERSION:
 const testRunTemplate = async (template: any) => {
