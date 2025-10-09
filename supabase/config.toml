@@ -14,3 +14,12 @@ verify_jwt = false
 
 [functions.generate-final-content]
 verify_jwt = false
+
+[functions.execute-autopilot-template]
+verify_jwt = false
+
+[functions.generate-content-from-card]
+verify_jwt = false
+
+[functions.send-draft-notification]
+verify_jwt = false

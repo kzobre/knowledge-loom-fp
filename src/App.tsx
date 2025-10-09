@@ -18,6 +18,7 @@ import QuestionSettings from "./pages/QuestionSettings";
 import Auth from "./pages/Auth";
 import Insights from "./pages/Insights";
 import InsightDetail from "./pages/InsightDetail";
+import Review from "./pages/Review";
 
 const queryClient = new QueryClient();
 

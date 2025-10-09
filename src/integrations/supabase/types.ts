@@ -16,14 +16,18 @@ export type Database = {
     Tables: {
       autopilot_templates: {
         Row: {
+          approval_required: boolean | null
           created_at: string | null
           custom_template_id: string | null
+          expected_delivery_time: string | null
           frequency: string | null
           id: string
           is_active: boolean | null
           last_run_at: string | null
           name: string
+          next_run_at: string | null
           output_format: string | null
+          schedule_config: Json | null
           source_feed_ids: string[] | null
           topic_filters: string[] | null
           updated_at: string | null
@@ -31,14 +35,18 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          approval_required?: boolean | null
           created_at?: string | null
           custom_template_id?: string | null
+          expected_delivery_time?: string | null
           frequency?: string | null
           id?: string
           is_active?: boolean | null
           last_run_at?: string | null
           name: string
+          next_run_at?: string | null
           output_format?: string | null
+          schedule_config?: Json | null
           source_feed_ids?: string[] | null
           topic_filters?: string[] | null
           updated_at?: string | null
@@ -46,14 +54,18 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          approval_required?: boolean | null
           created_at?: string | null
           custom_template_id?: string | null
+          expected_delivery_time?: string | null
           frequency?: string | null
           id?: string
           is_active?: boolean | null
           last_run_at?: string | null
           name?: string
+          next_run_at?: string | null
           output_format?: string | null
+          schedule_config?: Json | null
           source_feed_ids?: string[] | null
           topic_filters?: string[] | null
           updated_at?: string | null
@@ -107,6 +119,7 @@ export type Database = {
       }
       drafts: {
         Row: {
+          approval_status: string | null
           article_relevance_scores: Json | null
           autopilot_template_id: string | null
           body: string | null
@@ -116,16 +129,20 @@ export type Database = {
           insights_summary: string[] | null
           manual_revision_notes: string | null
           reference_card_ids: string[] | null
+          review_notes: string | null
+          reviewed_at: string | null
           revision_count: number | null
           seed_category: string | null
           seed_insight: string | null
           selected_direction: string | null
           status: string | null
+          submitted_for_approval_at: string | null
           title: string | null
           updated_at: string | null
           user_id: string | null
         }
         Insert: {
+          approval_status?: string | null
           article_relevance_scores?: Json | null
           autopilot_template_id?: string | null
           body?: string | null
@@ -135,16 +152,20 @@ export type Database = {
           insights_summary?: string[] | null
           manual_revision_notes?: string | null
           reference_card_ids?: string[] | null
+          review_notes?: string | null
+          reviewed_at?: string | null
           revision_count?: number | null
           seed_category?: string | null
           seed_insight?: string | null
           selected_direction?: string | null
           status?: string | null
+          submitted_for_approval_at?: string | null
           title?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
         Update: {
+          approval_status?: string | null
           article_relevance_scores?: Json | null
           autopilot_template_id?: string | null
           body?: string | null
@@ -154,11 +175,14 @@ export type Database = {
           insights_summary?: string[] | null
           manual_revision_notes?: string | null
           reference_card_ids?: string[] | null
+          review_notes?: string | null
+          reviewed_at?: string | null
           revision_count?: number | null
           seed_category?: string | null
           seed_insight?: string | null
           selected_direction?: string | null
           status?: string | null
+          submitted_for_approval_at?: string | null
           title?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -169,6 +193,50 @@ export type Database = {
             columns: ["autopilot_template_id"]
             isOneToOne: false
             referencedRelation: "autopilot_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_notifications: {
+        Row: {
+          action_taken: string | null
+          clicked_at: string | null
+          created_at: string | null
+          draft_id: string | null
+          id: string
+          opened_at: string | null
+          sent_at: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          action_taken?: string | null
+          clicked_at?: string | null
+          created_at?: string | null
+          draft_id?: string | null
+          id?: string
+          opened_at?: string | null
+          sent_at?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          action_taken?: string | null
+          clicked_at?: string | null
+          created_at?: string | null
+          draft_id?: string | null
+          id?: string
+          opened_at?: string | null
+          sent_at?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_notifications_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "drafts"
             referencedColumns: ["id"]
           },
         ]
@@ -272,6 +340,7 @@ export type Database = {
           business_description: string | null
           business_name: string | null
           created_at: string | null
+          email: string | null
           global_insight_questions: Json | null
           id: string
           target_audience: string | null
@@ -284,6 +353,7 @@ export type Database = {
           business_description?: string | null
           business_name?: string | null
           created_at?: string | null
+          email?: string | null
           global_insight_questions?: Json | null
           id?: string
           target_audience?: string | null
@@ -296,6 +366,7 @@ export type Database = {
           business_description?: string | null
           business_name?: string | null
           created_at?: string | null
+          email?: string | null
           global_insight_questions?: Json | null
           id?: string
           target_audience?: string | null
