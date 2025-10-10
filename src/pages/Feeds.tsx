@@ -157,6 +157,7 @@ const Feeds = () => {
             credibility_score: formData.credibility_score,
             topic_keywords: keywords,
             user_id: session.user.id,
+            question_set_id: selectedQuestionSet, // ✅ ADD THIS
           },
         ])
         .select()
@@ -463,6 +464,29 @@ const Feeds = () => {
                       placeholder="AI, Technology, Healthcare"
                     />
                   </div>
+                                    {/* ✅ ADD QUESTION SET DROPDOWN HERE */}
+                  <div className="space-y-2">
+                    <Label>Question Set</Label>
+                    <Select value={selectedQuestionSet} onValueChange={setSelectedQuestionSet}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select question set" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {questionSets.map((set) => (
+                          <SelectItem key={set.id} value={set.id}>
+                            {set.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-sm text-muted-foreground">
+                      Choose which questions to use for content from this feed
+                    </p>
+                  </div>
+
+                  <Button type="submit" className="w-full">
+                    {editingFeed ? "Update Feed" : "Add Feed"}
+                  </Button>
                   <Button type="submit" className="w-full">
                     {editingFeed ? "Update Feed" : "Add Feed"}
                   </Button>
