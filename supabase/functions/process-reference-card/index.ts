@@ -48,19 +48,20 @@ serve(async (req) => {
     // Determine questions with proper user context
     let questions: string[] = [];
 
-    // 1) Template-specific questions (using template_id explicitly)
-    let templateQuestions: string[] | null = null;
-    if (card.template_id) {
-      const { data: template, error: templateError } = await supabase
-        .from("reference_card_templates")
-        .select("custom_questions")
-        .eq("id", card.template_id)
-        .maybeSingle();
-      if (templateError) {
-        console.error("Template fetch error:", templateError);
-      }
-      if (template?.custom_questions && Array.isArray(template.custom_questions)) {
-        templateQuestions = template.custom_questions.filter((q: any) => typeof q === "string" && q.trim());
+    // ✅ UPDATED: 1) Check for question_set_id first
+    if (card.question_set_id) {
+      console.log("Using question set:", card.question_set_id);
+      const { data: questionSet, error: questionSetError } = await supabase
+        .from("question_sets")
+        .select("questions")
+        .eq("id", card.question_set_id)
+        .single();
+
+      if (questionSetError) {
+        console.error("Question set fetch error:", questionSetError);
+      } else if (questionSet?.questions && Array.isArray(questionSet.questions)) {
+        questions = questionSet.questions.filter((q: any) => typeof q === "string" && q.trim());
+        console.log("Loaded questions from question set:", questions.length);
       }
     }
 
@@ -99,6 +100,9 @@ serve(async (req) => {
           "What is the main argument or finding?"
         ];
       }
+
+
+
     }
 
     console.log("Questions found:", questions.length);
