@@ -21,6 +21,7 @@ const ReferenceCards = () => {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [processingCards, setProcessingCards] = useState<Set<string>>(new Set());
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+  const [questionSets, setQuestionSets] = useState<any[]>([]);
 
   const loadCards = async () => {
     let query = supabase
@@ -143,7 +144,15 @@ const ReferenceCards = () => {
       return next;
     });
   };
-
+  useEffect(() => {
+    // TODO: Replace with actual query when table exists
+    const mockQuestionSets = [
+      { id: "default", name: "Default Questions" },
+      { id: "set1", name: "Question Set 1" },
+      { id: "set2", name: "Question Set 2" },
+    ];
+    setQuestionSets(mockQuestionSets);
+  }, []);
   useEffect(() => {
     const checkAuthAndLoad = async () => {
       const { data: { session } } = await supabase.auth.getSession();

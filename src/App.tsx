@@ -20,6 +20,8 @@ import Insights from "./pages/Insights";
 import InsightDetail from "./pages/InsightDetail";
 import Review from "./pages/Review";
 import ContentCalendar from "./pages/ContentCalendar"; // ✅ Import added
+import QuestionSets from "./pages/QuestionSets";
+import QuestionSetEditor from "./pages/QuestionSetEditor";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +55,9 @@ const App = () => (
           <Route path="/calendar" element={<ContentCalendar />} />
           {/* KEEP CATCH-ALL ROUTE AT THE BOTTOM */}
           <Route path="*" element={<NotFound />} />
+          <Route path="/questions" element={<QuestionSets />} />
+          <Route path="/questions/new" element={<QuestionSetEditor />} />
+          <Route path="/questions/:id/edit" element={<QuestionSetEditor />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>

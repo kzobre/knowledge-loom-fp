@@ -34,18 +34,21 @@ import {
 } from "lucide-react";
 import { InstructionsToggle } from "@/components/InstructionsToggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Feeds = () => {
   const navigate = useNavigate();
   const [feeds, setFeeds] = useState<any[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFeed, setEditingFeed] = useState<any>(null);
+  const [selectedQuestionSet, setSelectedQuestionSet] = useState("default");
   const [formData, setFormData] = useState({
     name: "",
     url: "",
     credibility_score: 5,
     topic_keywords: "",
   });
+
 
   const [manualSourceDialogOpen, setManualSourceDialogOpen] = useState(false);
   const [manualSourceType, setManualSourceType] = useState<"url" | "pdf">("url");
@@ -57,6 +60,7 @@ const Feeds = () => {
   const [expandedFeeds, setExpandedFeeds] = useState<Set<string>>(new Set());
   const [refCardsByFeed, setRefCardsByFeed] = useState<Record<string, any[]>>({});
   const [loadingRefs, setLoadingRefs] = useState(false);
+  const [selectedQuestionSet, setSelectedQuestionSet] = useState("default");
 
   const loadReferenceCards = async (feedIds: string[]) => {
     if (!feedIds.length) return;
@@ -244,6 +248,7 @@ const Feeds = () => {
         type: manualSourceType,
         url: manualUrl,
         user_id: session.user.id,
+        question_set_id: selectedQuestionSet, // ✅ ADD THIS
       });
 
       const { data, error } = await supabase.functions.invoke("create-manual-source", {
@@ -251,6 +256,7 @@ const Feeds = () => {
           type: manualSourceType,
           url: manualSourceType === "url" ? manualUrl : undefined,
           user_id: session.user.id,
+          question_set_id: selectedQuestionSet, // ✅ ADD THIS
         },
       });
 
@@ -330,7 +336,25 @@ const Feeds = () => {
                       />
                     </div>
                   )}
-
+                  {/* ✅ ADD QUESTION SET DROPDOWN RIGHT HERE */}
+                    <div className="space-y-2">
+                      <Label>Question Set</Label>
+                      <Select value={selectedQuestionSet} onValueChange={setSelectedQuestionSet}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select question set" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {questionSets.map((set) => (
+                            <SelectItem key={set.id} value={set.id}>
+                              {set.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-muted-foreground">
+                        Choose which questions to use for content from this source
+                      </p>
+                    </div>
                   {manualSourceType === "pdf" && (
                     <div className="space-y-2">
                       <Label>Upload PDF (Coming Soon)</Label>
