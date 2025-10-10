@@ -22,8 +22,7 @@ const QuestionSettings = () => {
     }
 
     const { data, error } = await supabase
-      .from("reference_card_templates")
-      .select("*")
+      .from("question_sets")  // ✅ CORRECT TABLE      .select("*")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -31,12 +30,12 @@ const QuestionSettings = () => {
     } else {
       setTemplates(data || []);
       const questionsMap: { [key: string]: string[] } = {};
-      data?.forEach(template => {
-        const customQuestions = template.custom_questions;
-        if (Array.isArray(customQuestions)) {
-          questionsMap[template.id] = customQuestions as string[];
+      data?.forEach(questionSet => {
+        const questions = questionSet.questions;  // ✅ CHANGED COLUMN NAME
+        if (Array.isArray(questions)) {
+          questionsMap[questionSet.id] = questions as string[];
         } else {
-          questionsMap[template.id] = [];
+          questionsMap[questionSet.id] = [];
         }
       });
       setQuestions(questionsMap);
@@ -61,11 +60,10 @@ const QuestionSettings = () => {
     }
 
     const { error } = await supabase
-      .from("reference_card_templates")
+      .from("question_sets")  // ✅ CHANGED TABLE
       .insert([{ 
         name: newTemplateName, 
-        custom_questions: [],
-        user_id: session.user.id
+        questions: [],  // ✅ CHANGED COLUMN NAME        user_id: session.user.id
       }]);
 
     if (error) {
@@ -85,8 +83,8 @@ const QuestionSettings = () => {
     const updatedQuestions = [...currentQuestions, newQuestion];
 
     const { error } = await supabase
-      .from("reference_card_templates")
-      .update({ custom_questions: updatedQuestions })
+      .from("question_sets")  // ✅ CHANGED TABLE
+      .update({ questions: updatedQuestions })  // ✅ CHANGED COLUMN NAME
       .eq("id", templateId);
 
     if (error) {
@@ -106,8 +104,8 @@ const QuestionSettings = () => {
     const updatedQuestions = currentQuestions.filter((_, i) => i !== questionIndex);
 
     const { error } = await supabase
-      .from("reference_card_templates")
-      .update({ custom_questions: updatedQuestions })
+      .from("question_sets")  // ✅ CHANGED TABLE
+      .update({ questions: updatedQuestions })  // ✅ CHANGED COLUMN NAME
       .eq("id", templateId);
 
     if (error) {
