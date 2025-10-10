@@ -22,7 +22,8 @@ const QuestionSettings = () => {
     }
 
     const { data, error } = await supabase
-      .from("question_sets")  // ✅ CORRECT TABLE      .select("*")
+      .from("question_sets")
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -58,19 +59,20 @@ const QuestionSettings = () => {
       toast.error("You must be logged in to create templates");
       return;
     }
-     console.log("🔄 Creating question set with:", {  // ✅ ADD THIS LINE
+    console.log("🔄 Creating question set with:", {
       name: newTemplateName,
       user_id: session.user.id
-    });  // ✅ ADD THIS LINE
+    });
     
     const { error } = await supabase
-      .from("question_sets")  // ✅ CHANGED TABLE
+      .from("question_sets")
       .insert([{ 
         name: newTemplateName, 
-        questions: [],  // ✅ CHANGED COLUMN NAME        user_id: session.user.id
+        questions: [],
+        user_id: session.user.id
       }]);
 
-      console.log("❌ Insert error:", error);  // ✅ ADD THIS LINE RIGHT HERE
+    console.log("❌ Insert error:", error);
 
     if (error) {
       toast.error("Failed to create template");
@@ -89,8 +91,8 @@ const QuestionSettings = () => {
     const updatedQuestions = [...currentQuestions, newQuestion];
 
     const { error } = await supabase
-      .from("question_sets")  // ✅ CHANGED TABLE
-      .update({ questions: updatedQuestions })  // ✅ CHANGED COLUMN NAME
+      .from("question_sets")
+      .update({ questions: updatedQuestions })
       .eq("id", templateId);
 
     if (error) {
@@ -110,8 +112,8 @@ const QuestionSettings = () => {
     const updatedQuestions = currentQuestions.filter((_, i) => i !== questionIndex);
 
     const { error } = await supabase
-      .from("question_sets")  // ✅ CHANGED TABLE
-      .update({ questions: updatedQuestions })  // ✅ CHANGED COLUMN NAME
+      .from("question_sets")
+      .update({ questions: updatedQuestions })
       .eq("id", templateId);
 
     if (error) {
