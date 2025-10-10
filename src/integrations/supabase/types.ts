@@ -223,6 +223,7 @@ export type Database = {
           selected_direction: string | null
           status: string | null
           submitted_for_approval_at: string | null
+          template_id: string | null
           title: string | null
           updated_at: string | null
           user_id: string | null
@@ -249,6 +250,7 @@ export type Database = {
           selected_direction?: string | null
           status?: string | null
           submitted_for_approval_at?: string | null
+          template_id?: string | null
           title?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -275,6 +277,7 @@ export type Database = {
           selected_direction?: string | null
           status?: string | null
           submitted_for_approval_at?: string | null
+          template_id?: string | null
           title?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -292,6 +295,13 @@ export type Database = {
             columns: ["revised_from"]
             isOneToOne: false
             referencedRelation: "drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drafts_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "content_templates"
             referencedColumns: ["id"]
           },
         ]

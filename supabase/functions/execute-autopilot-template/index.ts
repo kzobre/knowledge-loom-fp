@@ -32,7 +32,7 @@ serve(async (req) => {
 
     console.log("🔄 Executing autopilot template:", templateId, "Test run:", isTestRun);
 
-    // Get template with feed details
+    // Get autopilot template with feed details
     const { data: template, error: templateError } = await supabaseClient
       .from("autopilot_templates")
       .select(`
@@ -83,6 +83,21 @@ serve(async (req) => {
 
     console.log(`📚 Found ${referenceCards.length} reference cards for template`);
 
+    // Get content template if specified
+    let contentTemplate = null;
+    if (template.content_type) {
+      const { data: tmpl } = await supabaseClient
+        .from("content_templates")
+        .select("*")
+        .eq("content_type", template.content_type)
+        .eq("is_active", true)
+        .or(`user_id.eq.${template.user_id},is_system_template.eq.true`)
+        .order("is_system_template", { ascending: false })
+        .limit(1)
+        .single();
+      contentTemplate = tmpl;
+    }
+
     const createdDrafts = [];
 
     // Generate draft from each reference card
@@ -92,8 +107,8 @@ serve(async (req) => {
         const { data: generatedContent, error: aiError } = await supabaseClient.functions.invoke("generate-content-from-card", {
           body: {
             cardId: card.id,
-            templateId: template.id,
-            outputFormat: template.output_format
+            templateId: contentTemplate?.id,
+            outputFormat: template.content_type
           }
         });
 
@@ -111,8 +126,9 @@ serve(async (req) => {
             status: "draft",
             user_id: template.user_id,
             seed_insight: card.ai_summary,
-            content_type: template.output_format,
+            content_type: template.content_type,
             autopilot_template_id: template.id,
+            template_id: contentTemplate?.id,
             approval_status: template.approval_required !== false ? 'pending' : 'draft',
             revision_count: 0
           })

@@ -34,10 +34,16 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // 1. Fetch the original draft
+    // 1. Fetch the original draft with template
     const { data: draft, error: draftError } = await supabaseClient
       .from("drafts")
-      .select("*")
+      .select(`
+        *,
+        content_templates (
+          name,
+          template_structure
+        )
+      `)
       .eq("id", draftId)
       .single();
 
@@ -52,8 +58,40 @@ serve(async (req) => {
       );
     }
 
-    // 2. Prepare the AI prompt with feedback
-    const improvementPrompt = `
+    // 2. Prepare the AI prompt with feedback and template
+    let improvementPrompt = "";
+    
+    if (draft.content_templates) {
+      const templateConfig = draft.content_templates.template_structure;
+      improvementPrompt = `STRICTLY FOLLOW THIS CONTENT TEMPLATE WHILE IMPROVING THE DRAFT.
+
+TEMPLATE: ${draft.content_templates.name}
+GOAL: ${templateConfig.goal}
+
+REQUIRED STRUCTURE:
+${formatStructureRequirements(templateConfig.structure)}
+
+VOICE & TONE: ${templateConfig.voice_guidelines}
+
+ORIGINAL DRAFT:
+Title: ${draft.title || "Untitled"}
+Content: ${draft.body}
+
+EDITOR FEEDBACK: ${feedback}
+
+INSTRUCTIONS:
+- Carefully address all points in the editor feedback
+- Maintain the template structure and requirements above
+- Improve clarity, quality, and engagement based on feedback
+- Preserve the strategic angle and core message
+- Return in the same format as the original
+
+RESPONSE FORMAT:
+TITLE: [Improved title]
+CONTENT: [Improved content following template structure]
+`;
+    } else {
+      improvementPrompt = `
 IMPROVE THIS DRAFT BASED ON EDITOR FEEDBACK:
 
 ORIGINAL DRAFT:
@@ -69,22 +107,36 @@ INSTRUCTIONS:
 - Keep similar length and tone
 - Return ONLY the revised content in the same format as the original
 
-REVISED CONTEST:
+REVISED CONTENT:
 `;
+    }
 
-    // 3. Call AI to regenerate content
+    // 3. Call Lovable AI Gateway to regenerate content
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
+    }
+
     const aiResponse = await fetch(
-      "https://api.lovable.ai/v1/proxy/ai/generate",
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${Deno.env.get("LOVABLE_AI_GATEWAY_KEY")}`,
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "gemini-2.5-flash",
-          prompt: improvementPrompt,
-          max_tokens: 4000,
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert content editor that improves drafts based on feedback."
+            },
+            {
+              role: "user",
+              content: improvementPrompt
+            }
+          ],
         }),
       }
     );
@@ -96,20 +148,24 @@ REVISED CONTEST:
     }
 
     const aiData = await aiResponse.json();
-    const revisedContent = aiData.choices?.[0]?.text || aiData.content || "Failed to generate revised content";
+    const generatedText = aiData.choices?.[0]?.message?.content || "Failed to generate revised content";
+    
+    // Parse the response
+    const { title: revisedTitle, content: revisedContent } = parseGeneratedContent(generatedText, draft.title);
 
     // 4. Create a new draft with the revised content
     const { data: newDraft, error: createError } = await supabaseClient
       .from("drafts")
       .insert({
         user_id: draft.user_id,
-        title: `Revised: ${draft.title}`,
+        title: revisedTitle,
         body: revisedContent,
         seed_insight: draft.seed_insight,
         seed_category: draft.seed_category,
         selected_direction: draft.selected_direction,
         content_type: draft.content_type,
         autopilot_template_id: draft.autopilot_template_id,
+        template_id: draft.template_id,
         approval_status: "pending", // New draft needs review again
         revised_from: draft.id, // Track which draft this revised from
         revision_feedback: feedback, // Store the feedback that prompted this revision
@@ -154,3 +210,36 @@ REVISED CONTEST:
     );
   }
 });
+
+function formatStructureRequirements(structure: any) {
+  return Object.entries(structure).map(([section, config]: [string, any]) => {
+    let requirements = `${section.toUpperCase()}: ${config.description}`;
+    if (config.approx_words) requirements += ` (~${config.approx_words} words)`;
+    if (config.min_words && config.max_words) requirements += ` (${config.min_words}-${config.max_words} words)`;
+    if (config.max_chars) requirements += ` (max ${config.max_chars} characters)`;
+    if (config.sentences) requirements += ` (${config.sentences} sentences)`;
+    if (config.count) requirements += ` (${config.count} items)`;
+    if (config.required === false) requirements += ` [OPTIONAL]`;
+    if (config.formatting) requirements += ` [Format: ${config.formatting}]`;
+    if (config.sections) requirements += ` [Sections: ${config.sections.join(', ')}]`;
+    if (config.required_elements) requirements += ` [Required: ${config.required_elements.join(', ')}]`;
+    return requirements;
+  }).join('\n');
+}
+
+function parseGeneratedContent(generatedText: string, fallbackTitle: string) {
+  let title = fallbackTitle;
+  let content = generatedText;
+
+  // Try to extract title if formatted properly
+  const titleMatch = generatedText.match(/TITLE:\s*(.+?)(?:\n|$)/i);
+  if (titleMatch) {
+    title = titleMatch[1].trim();
+    content = generatedText.replace(/TITLE:\s*.+?\n/i, "").trim();
+  }
+
+  // Remove CONTENT: prefix if present
+  content = content.replace(/^CONTENT:\s*/i, "").trim();
+
+  return { title, content };
+}

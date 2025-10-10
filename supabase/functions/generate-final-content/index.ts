@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { direction, seedInsight, seedCategory, insightCardIds, userId } = await req.json();
+    const { direction, seedInsight, seedCategory, insightCardIds, userId, templateId } = await req.json();
 
     console.log("Generating final content with params:", { 
       direction: direction?.title, 
@@ -41,6 +41,17 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
     );
 
+    // Fetch template if provided
+    let contentTemplate = null;
+    if (templateId) {
+      const { data: template } = await supabaseClient
+        .from("content_templates")
+        .select("*")
+        .eq("id", templateId)
+        .single();
+      contentTemplate = template;
+    }
+
     // Fetch selected insight cards if any
     let insightCardsData = [];
     if (insightCardIds && insightCardIds.length > 0) {
@@ -59,7 +70,7 @@ serve(async (req) => {
     }
 
     // Prepare the prompt for AI generation
-    const prompt = createContentPrompt(direction, seedInsight, seedCategory, insightCardsData);
+    const prompt = createContentPrompt(direction, seedInsight, seedCategory, insightCardsData, contentTemplate);
 
     // Call Lovable AI Gateway
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -151,7 +162,46 @@ serve(async (req) => {
   }
 });
 
-function createContentPrompt(direction: any, seedInsight: string, seedCategory: string, insightCards: any[]) {
+function createContentPrompt(direction: any, seedInsight: string, seedCategory: string, insightCards: any[], contentTemplate: any) {
+  // Use template if provided
+  if (contentTemplate) {
+    const templateConfig = contentTemplate.template_structure;
+    
+    let prompt = `STRICTLY FOLLOW THIS CONTENT TEMPLATE. DO NOT DEVIATE FROM THE STRUCTURE.
+
+TEMPLATE: ${contentTemplate.name}
+GOAL: ${templateConfig.goal}
+
+REQUIRED STRUCTURE:
+${formatStructureRequirements(templateConfig.structure)}
+
+VOICE & TONE: ${templateConfig.voice_guidelines}
+
+CONTENT DIRECTION:
+Title: ${direction.title}
+Description: ${direction.description}
+Angle: ${direction.angle}
+
+SEED INSIGHT (${seedCategory}): ${seedInsight}
+`;
+
+    if (insightCards.length > 0) {
+      prompt += "\nADDITIONAL INSIGHTS TO INCORPORATE:\n";
+      insightCards.forEach((insight: any, index: number) => {
+        prompt += `${index + 1}. [${insight.insight_type}] ${insight.title}: ${insight.content}\n`;
+      });
+    }
+
+    prompt += `\nRESPONSE FORMAT - STRICTLY FOLLOW:
+TITLE: [Generated title following template requirements]
+CONTENT: [Full content following the exact structure above]
+
+CRITICAL: Preserve the strategic angle and direction throughout the content.`;
+
+    return prompt;
+  }
+
+  // Fallback to basic prompt
   let prompt = `Create a well-structured content piece based on the following direction:
 
 CONTENT DIRECTION:
@@ -165,7 +215,7 @@ SEED INSIGHT (${seedCategory}): ${seedInsight}
 
   if (insightCards.length > 0) {
     prompt += "ADDITIONAL INSIGHTS TO INCORPORATE:\n";
-    insightCards.forEach((insight, index) => {
+    insightCards.forEach((insight: any, index: number) => {
       prompt += `${index + 1}. [${insight.insight_type}] ${insight.title}: ${insight.content}\n`;
     });
     prompt += "\n";
@@ -185,6 +235,22 @@ CONTENT: [Your full content here, using markdown formatting for readability]
 Make the content authentic, valuable, and aligned with the direction's angle.`;
 
   return prompt;
+}
+
+function formatStructureRequirements(structure: any) {
+  return Object.entries(structure).map(([section, config]: [string, any]) => {
+    let requirements = `${section.toUpperCase()}: ${config.description}`;
+    if (config.approx_words) requirements += ` (~${config.approx_words} words)`;
+    if (config.min_words && config.max_words) requirements += ` (${config.min_words}-${config.max_words} words)`;
+    if (config.max_chars) requirements += ` (max ${config.max_chars} characters)`;
+    if (config.sentences) requirements += ` (${config.sentences} sentences)`;
+    if (config.count) requirements += ` (${config.count} items)`;
+    if (config.required === false) requirements += ` [OPTIONAL]`;
+    if (config.formatting) requirements += ` [Format: ${config.formatting}]`;
+    if (config.sections) requirements += ` [Sections: ${config.sections.join(', ')}]`;
+    if (config.required_elements) requirements += ` [Required: ${config.required_elements.join(', ')}]`;
+    return requirements;
+  }).join('\n');
 }
 
 function parseGeneratedContent(generatedText: string, fallbackTitle: string) {
