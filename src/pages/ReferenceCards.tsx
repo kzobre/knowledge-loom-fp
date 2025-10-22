@@ -224,6 +224,8 @@ const ReferenceCards = () => {
               <SelectItem value="rss">RSS</SelectItem>
               <SelectItem value="journal">Journal</SelectItem>
               <SelectItem value="manual">Manual</SelectItem>
+              <SelectItem value="perplexity">Perplexity</SelectItem>
+              <SelectItem value="observation">Observation Journal</SelectItem>
             </SelectContent>
           </Select>
         </div>

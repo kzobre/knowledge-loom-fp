@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Save, ExternalLink, AlertCircle, Sparkles } from "lucide-react";
+import { ArrowLeft, Save, ExternalLink, AlertCircle, Sparkles, MessageSquare } from "lucide-react";
 
 const CardDetail = () => {
   const navigate = useNavigate();
@@ -20,6 +21,10 @@ const CardDetail = () => {
   const [editedText, setEditedText] = useState("");
   const [questions, setQuestions] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [questionSets, setQuestionSets] = useState<any[]>([]);
+  const [selectedQuestionSetId, setSelectedQuestionSetId] = useState<string>("");
+  const [customQuestion, setCustomQuestion] = useState("");
+  const [askingCustomQuestion, setAskingCustomQuestion] = useState(false);
 
   const loadCard = async () => {
     if (!id) return;
@@ -57,6 +62,7 @@ const CardDetail = () => {
       }
     } else if (cardData.question_set_id) {
       // Load from question set
+      setSelectedQuestionSetId(cardData.question_set_id);
       const { data: questionSet } = await supabase
         .from("question_sets")
         .select("questions")
@@ -79,6 +85,21 @@ const CardDetail = () => {
       if (defaultSet?.questions && Array.isArray(defaultSet.questions)) {
         setQuestions(defaultSet.questions.filter((q: any) => typeof q === 'string'));
       }
+    }
+  };
+
+  const loadQuestionSets = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    const { data, error } = await supabase
+      .from("question_sets")
+      .select("id, name")
+      .eq("user_id", session?.user?.id)
+      .eq("is_active", true)
+      .order("name");
+
+    if (!error && data) {
+      setQuestionSets(data);
     }
   };
 
@@ -123,8 +144,61 @@ const CardDetail = () => {
     }
   };
 
+  const reprocessWithQuestionSet = async () => {
+    if (!selectedQuestionSetId) {
+      toast.error("Please select a question set");
+      return;
+    }
+
+    // Update the card's question set
+    const { error: updateError } = await supabase
+      .from("reference_cards")
+      .update({ question_set_id: selectedQuestionSetId })
+      .eq("id", id);
+
+    if (updateError) {
+      toast.error("Failed to update question set");
+      return;
+    }
+
+    // Reprocess the card
+    await processCard();
+  };
+
+  const askCustomQuestion = async () => {
+    if (!customQuestion.trim()) {
+      toast.error("Please enter a question");
+      return;
+    }
+
+    setAskingCustomQuestion(true);
+    toast.loading("Getting answer...");
+
+    const { data, error } = await supabase.functions.invoke("process-reference-card", {
+      body: { 
+        cardId: id,
+        customQuestion: customQuestion.trim()
+      }
+    });
+
+    setAskingCustomQuestion(false);
+
+    if (error) {
+      console.error("Custom question error:", error);
+      toast.error("Failed to get answer: " + (error.message || "Unknown error"));
+    } else if (data?.error) {
+      console.error("Custom question data error:", data.error);
+      toast.error("AI processing failed: " + data.error);
+    } else {
+      toast.success("Answer received!");
+      setCustomQuestion("");
+      loadCard();
+    }
+  };
+
   useEffect(() => {
     loadCard();
+    loadQuestionSets();
   }, [id, navigate]);
 
   if (loading) {
@@ -290,6 +364,61 @@ const CardDetail = () => {
                 <p className="text-sm">Click "Process with AI" to analyze the content and answer insight questions.</p>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Reprocess with Question Set */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-lg">Reprocess with Different Question Set</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Select value={selectedQuestionSetId} onValueChange={setSelectedQuestionSetId}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select a question set..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {questionSets.map((qs) => (
+                    <SelectItem key={qs.id} value={qs.id}>
+                      {qs.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button 
+                onClick={reprocessWithQuestionSet}
+                disabled={processing || !selectedQuestionSetId}
+              >
+                <Sparkles className="h-4 w-4 mr-1" />
+                Reprocess
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Ask Custom Question */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Ask a Custom Question</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Textarea
+                value={customQuestion}
+                onChange={(e) => setCustomQuestion(e.target.value)}
+                placeholder="Enter your custom question about this content..."
+                rows={3}
+              />
+              <Button 
+                onClick={askCustomQuestion}
+                disabled={askingCustomQuestion || !customQuestion.trim()}
+                className="w-full"
+              >
+                <MessageSquare className="h-4 w-4 mr-1" />
+                {askingCustomQuestion ? "Getting Answer..." : "Ask Question"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </main>

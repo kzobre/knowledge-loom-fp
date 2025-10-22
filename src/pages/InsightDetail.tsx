@@ -111,7 +111,7 @@ const InsightDetail = () => {
         user_id: session?.user?.id,
         title: formData.title,
         original_text: formData.content,
-        source_type: "insight",
+        source_type: "observation",
         status: "active",
         question_set_id: questionSetId || null,
         content_quality: "good"
@@ -364,7 +364,7 @@ const InsightDetail = () => {
                   type="button"
                 >
                   <FileText className="mr-2 h-4 w-4" />
-                  Convert to Reference Card
+                  Convert to a Reference Card
                 </Button>
               )}
               <div className={!isEditing ? "ml-auto" : ""}>

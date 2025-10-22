@@ -92,7 +92,7 @@ const Insights = () => {
         user_id: session?.user?.id,
         title: insight.title,
         original_text: insight.content,
-        source_type: "insight",
+        source_type: "observation",
         status: "active",
         question_set_id: questionSetId || null,
         content_quality: "good"
@@ -205,7 +205,7 @@ const Insights = () => {
           <div>
             <h1 className="text-3xl font-bold mb-2">Observation Journal</h1>
             <p className="text-muted-foreground">
-              Your personal collection of insights, theses, and observations
+              Capture insights that can become reference cards for content generation. Record thesis statements, hooks, contrarian arguments, and key observations. Click "Convert to a Reference Card" to transform insights into processed reference material with optional question sets for AI analysis.
             </p>
           </div>
           <Button onClick={() => navigate("/insights/new")}>
@@ -304,7 +304,7 @@ const Insights = () => {
                         onClick={() => openConvertDialog(insight.id)}
                       >
                         <FileText className="h-4 w-4 mr-1" />
-                        Convert
+                        Convert to a Reference Card
                       </Button>
                       <Button
                         variant="outline"
