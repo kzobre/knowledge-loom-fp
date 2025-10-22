@@ -31,7 +31,7 @@ const InsightDetail = () => {
   const [tagInput, setTagInput] = useState("");
   const [questionSets, setQuestionSets] = useState<Array<{ id: string; name: string }>>([]);
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
-  const [selectedQuestionSetId, setSelectedQuestionSetId] = useState<string>("");
+  const [selectedQuestionSetId, setSelectedQuestionSetId] = useState<string>("none");
   
   const [formData, setFormData] = useState<InsightFormData>({
     title: "",
@@ -125,7 +125,7 @@ const InsightDetail = () => {
     } else {
       toast.success("Insight converted to reference card");
       setConvertDialogOpen(false);
-      setSelectedQuestionSetId("");
+      setSelectedQuestionSetId("none");
       navigate(`/reference-cards/${data.id}`);
     }
   };
@@ -396,7 +396,7 @@ const InsightDetail = () => {
                     <SelectValue placeholder="No question set (convert only)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No question set</SelectItem>
+                    <SelectItem value="none">No question set</SelectItem>
                     {questionSets.map((qs) => (
                       <SelectItem key={qs.id} value={qs.id}>
                         {qs.name}
@@ -410,7 +410,7 @@ const InsightDetail = () => {
                   Cancel
                 </Button>
                 <Button 
-                  onClick={() => handleConvertToReferenceCard(selectedQuestionSetId || undefined)}
+                  onClick={() => handleConvertToReferenceCard(selectedQuestionSetId !== "none" ? selectedQuestionSetId : undefined)}
                 >
                   Convert to Reference Card
                 </Button>

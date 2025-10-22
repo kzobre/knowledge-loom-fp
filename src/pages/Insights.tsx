@@ -32,7 +32,7 @@ const Insights = () => {
   const [questionSets, setQuestionSets] = useState<Array<{ id: string; name: string }>>([]);
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
-  const [selectedQuestionSetId, setSelectedQuestionSetId] = useState<string>("");
+  const [selectedQuestionSetId, setSelectedQuestionSetId] = useState<string>("none");
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -107,7 +107,7 @@ const Insights = () => {
       toast.success("Insight converted to reference card");
       setConvertDialogOpen(false);
       setSelectedInsightId(null);
-      setSelectedQuestionSetId("");
+      setSelectedQuestionSetId("none");
       navigate(`/reference-cards/${data.id}`);
     }
   };
@@ -361,7 +361,7 @@ const Insights = () => {
                     <SelectValue placeholder="No question set (convert only)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No question set</SelectItem>
+                    <SelectItem value="none">No question set</SelectItem>
                     {questionSets.map((qs) => (
                       <SelectItem key={qs.id} value={qs.id}>
                         {qs.name}
@@ -375,7 +375,7 @@ const Insights = () => {
                   Cancel
                 </Button>
                 <Button 
-                  onClick={() => selectedInsightId && handleConvertToReferenceCard(selectedInsightId, selectedQuestionSetId || undefined)}
+                  onClick={() => selectedInsightId && handleConvertToReferenceCard(selectedInsightId, selectedQuestionSetId !== "none" ? selectedQuestionSetId : undefined)}
                 >
                   Convert to Reference Card
                 </Button>
