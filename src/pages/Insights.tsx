@@ -133,9 +133,11 @@ const Insights = () => {
       setSelectedInsightId(null);
       setSelectedQuestionSetId("none");
       navigate(`/reference-cards/${data.id}`);
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to convert insight to reference card");
+    } catch (error: any) {
+      console.error("Convert error details:", error);
+      console.error("Error message:", error?.message);
+      console.error("Error code:", error?.code);
+      toast.error(`Failed to convert: ${error?.message || 'Unknown error'}`);
     }
   };
 
