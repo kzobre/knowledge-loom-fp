@@ -10,10 +10,73 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
+      audience_profile: {
+        Row: {
+          asset_range: string | null
+          channels: string[]
+          core_systems: string | null
+          created_at: string
+          fit_criteria: string[]
+          id: string
+          institution_type: string | null
+          language_avoid: string[]
+          language_use: string[]
+          thesis: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          asset_range?: string | null
+          channels?: string[]
+          core_systems?: string | null
+          created_at?: string
+          fit_criteria?: string[]
+          id?: string
+          institution_type?: string | null
+          language_avoid?: string[]
+          language_use?: string[]
+          thesis?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          asset_range?: string | null
+          channels?: string[]
+          core_systems?: string | null
+          created_at?: string
+          fit_criteria?: string[]
+          id?: string
+          institution_type?: string | null
+          language_avoid?: string[]
+          language_use?: string[]
+          thesis?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      automation_config: {
+        Row: {
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       autopilot_templates: {
         Row: {
           approval_required: boolean | null
@@ -126,6 +189,125 @@ export type Database = {
           },
         ]
       }
+      content_schedules: {
+        Row: {
+          anchor: number | null
+          child_format_id: string | null
+          child_nature_id: string | null
+          created_at: string
+          day_of_week: number
+          format_id: string
+          frequency: string
+          id: string
+          is_active: boolean
+          job_id: string
+          lane_id: string | null
+          max_reuse_count: number
+          nature_id: string
+          reader_id: string | null
+          requires_child: boolean
+          reuse_window_days: number
+          time_of_day: string
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          anchor?: number | null
+          child_format_id?: string | null
+          child_nature_id?: string | null
+          created_at?: string
+          day_of_week: number
+          format_id: string
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          job_id: string
+          lane_id?: string | null
+          max_reuse_count?: number
+          nature_id: string
+          reader_id?: string | null
+          requires_child?: boolean
+          reuse_window_days?: number
+          time_of_day?: string
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          anchor?: number | null
+          child_format_id?: string | null
+          child_nature_id?: string | null
+          created_at?: string
+          day_of_week?: number
+          format_id?: string
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          job_id?: string
+          lane_id?: string | null
+          max_reuse_count?: number
+          nature_id?: string
+          reader_id?: string | null
+          requires_child?: boolean
+          reuse_window_days?: number
+          time_of_day?: string
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_schedules_child_format_id_fkey"
+            columns: ["child_format_id"]
+            isOneToOne: false
+            referencedRelation: "formats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_schedules_child_nature_id_fkey"
+            columns: ["child_nature_id"]
+            isOneToOne: false
+            referencedRelation: "natures"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_schedules_format_id_fkey"
+            columns: ["format_id"]
+            isOneToOne: false
+            referencedRelation: "formats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_schedules_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_schedules_lane_id_fkey"
+            columns: ["lane_id"]
+            isOneToOne: false
+            referencedRelation: "lanes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_schedules_nature_id_fkey"
+            columns: ["nature_id"]
+            isOneToOne: false
+            referencedRelation: "natures"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_schedules_reader_id_fkey"
+            columns: ["reader_id"]
+            isOneToOne: false
+            referencedRelation: "readers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       content_templates: {
         Row: {
           content_type: string
@@ -165,6 +347,45 @@ export type Database = {
         }
         Relationships: []
       }
+      discover_sessions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          last_checked: number | null
+          last_kept: number | null
+          last_target: number | null
+          rows: Json
+          running: boolean
+          target_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          last_checked?: number | null
+          last_kept?: number | null
+          last_target?: number | null
+          rows?: Json
+          running?: boolean
+          target_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          last_checked?: number | null
+          last_kept?: number | null
+          last_target?: number | null
+          rows?: Json
+          running?: boolean
+          target_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       draft_revisions: {
         Row: {
           body: string | null
@@ -200,6 +421,59 @@ export type Database = {
           },
         ]
       }
+      draft_visuals: {
+        Row: {
+          canvas_height: number | null
+          canvas_width: number | null
+          created_at: string | null
+          draft_id: string
+          error_message: string | null
+          html_content: string
+          id: string
+          image_url: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+          visual_type: string
+        }
+        Insert: {
+          canvas_height?: number | null
+          canvas_width?: number | null
+          created_at?: string | null
+          draft_id: string
+          error_message?: string | null
+          html_content: string
+          id?: string
+          image_url?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+          visual_type: string
+        }
+        Update: {
+          canvas_height?: number | null
+          canvas_width?: number | null
+          created_at?: string | null
+          draft_id?: string
+          error_message?: string | null
+          html_content?: string
+          id?: string
+          image_url?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+          visual_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "draft_visuals_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       drafts: {
         Row: {
           approval_status: string | null
@@ -208,19 +482,44 @@ export type Database = {
           body: string | null
           content_type: string | null
           created_at: string | null
+          external_post_id: string | null
+          format_id: string | null
           id: string
           insights_summary: string[] | null
+          job_id: string | null
+          lane_id: string | null
           manual_revision_notes: string | null
+          max_reuse_count: number | null
+          metric_comments: number | null
+          metric_impressions: number | null
+          metric_likes: number | null
+          metrics_error: string | null
+          metrics_synced_at: string | null
+          nature_id: string | null
+          parent_draft_id: string | null
+          publish_basis: string | null
+          publish_error: string | null
+          publish_status: string | null
+          published_at: string | null
+          reader_id: string | null
           reference_card_ids: string[] | null
+          reuse_angles_used: Json
+          reuse_count: number
+          reuse_window_days: number | null
           review_notes: string | null
           reviewed_at: string | null
           revised_from: string | null
           revision_count: number | null
           revision_feedback: string | null
+          schedule_id: string | null
+          scheduled_for: string | null
           scheduled_publish_date: string | null
           seed_category: string | null
+          seed_id: string | null
           seed_insight: string | null
           selected_direction: string | null
+          stat_attributions: Json
+          stat_flag: string | null
           status: string | null
           submitted_for_approval_at: string | null
           template_id: string | null
@@ -235,19 +534,44 @@ export type Database = {
           body?: string | null
           content_type?: string | null
           created_at?: string | null
+          external_post_id?: string | null
+          format_id?: string | null
           id?: string
           insights_summary?: string[] | null
+          job_id?: string | null
+          lane_id?: string | null
           manual_revision_notes?: string | null
+          max_reuse_count?: number | null
+          metric_comments?: number | null
+          metric_impressions?: number | null
+          metric_likes?: number | null
+          metrics_error?: string | null
+          metrics_synced_at?: string | null
+          nature_id?: string | null
+          parent_draft_id?: string | null
+          publish_basis?: string | null
+          publish_error?: string | null
+          publish_status?: string | null
+          published_at?: string | null
+          reader_id?: string | null
           reference_card_ids?: string[] | null
+          reuse_angles_used?: Json
+          reuse_count?: number
+          reuse_window_days?: number | null
           review_notes?: string | null
           reviewed_at?: string | null
           revised_from?: string | null
           revision_count?: number | null
           revision_feedback?: string | null
+          schedule_id?: string | null
+          scheduled_for?: string | null
           scheduled_publish_date?: string | null
           seed_category?: string | null
+          seed_id?: string | null
           seed_insight?: string | null
           selected_direction?: string | null
+          stat_attributions?: Json
+          stat_flag?: string | null
           status?: string | null
           submitted_for_approval_at?: string | null
           template_id?: string | null
@@ -262,19 +586,44 @@ export type Database = {
           body?: string | null
           content_type?: string | null
           created_at?: string | null
+          external_post_id?: string | null
+          format_id?: string | null
           id?: string
           insights_summary?: string[] | null
+          job_id?: string | null
+          lane_id?: string | null
           manual_revision_notes?: string | null
+          max_reuse_count?: number | null
+          metric_comments?: number | null
+          metric_impressions?: number | null
+          metric_likes?: number | null
+          metrics_error?: string | null
+          metrics_synced_at?: string | null
+          nature_id?: string | null
+          parent_draft_id?: string | null
+          publish_basis?: string | null
+          publish_error?: string | null
+          publish_status?: string | null
+          published_at?: string | null
+          reader_id?: string | null
           reference_card_ids?: string[] | null
+          reuse_angles_used?: Json
+          reuse_count?: number
+          reuse_window_days?: number | null
           review_notes?: string | null
           reviewed_at?: string | null
           revised_from?: string | null
           revision_count?: number | null
           revision_feedback?: string | null
+          schedule_id?: string | null
+          scheduled_for?: string | null
           scheduled_publish_date?: string | null
           seed_category?: string | null
+          seed_id?: string | null
           seed_insight?: string | null
           selected_direction?: string | null
+          stat_attributions?: Json
+          stat_flag?: string | null
           status?: string | null
           submitted_for_approval_at?: string | null
           template_id?: string | null
@@ -291,10 +640,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "drafts_format_id_fkey"
+            columns: ["format_id"]
+            isOneToOne: false
+            referencedRelation: "formats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drafts_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drafts_lane_id_fkey"
+            columns: ["lane_id"]
+            isOneToOne: false
+            referencedRelation: "lanes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drafts_nature_id_fkey"
+            columns: ["nature_id"]
+            isOneToOne: false
+            referencedRelation: "natures"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drafts_parent_draft_id_fkey"
+            columns: ["parent_draft_id"]
+            isOneToOne: false
+            referencedRelation: "drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drafts_reader_id_fkey"
+            columns: ["reader_id"]
+            isOneToOne: false
+            referencedRelation: "readers"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "drafts_revised_from_fkey"
             columns: ["revised_from"]
             isOneToOne: false
             referencedRelation: "drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drafts_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "content_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drafts_seed_id_fkey"
+            columns: ["seed_id"]
+            isOneToOne: false
+            referencedRelation: "seeds"
             referencedColumns: ["id"]
           },
           {
@@ -350,6 +755,129 @@ export type Database = {
           },
         ]
       }
+      fastforward_runs: {
+        Row: {
+          completed_at: string | null
+          current_label: string | null
+          done: number
+          last_attempted: number | null
+          last_created: number | null
+          last_failed: number | null
+          running: boolean
+          started_at: string | null
+          target_count: number
+          total: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          current_label?: string | null
+          done?: number
+          last_attempted?: number | null
+          last_created?: number | null
+          last_failed?: number | null
+          running?: boolean
+          started_at?: string | null
+          target_count?: number
+          total?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          current_label?: string | null
+          done?: number
+          last_attempted?: number | null
+          last_created?: number | null
+          last_failed?: number | null
+          running?: boolean
+          started_at?: string | null
+          target_count?: number
+          total?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      formats: {
+        Row: {
+          created_at: string
+          definition: string | null
+          id: string
+          is_active: boolean
+          key: string
+          max_words: number | null
+          min_words: number | null
+          name: string
+          platform: string
+          sort_order: number
+          updated_at: string
+          user_id: string
+          writing_samples: Json
+        }
+        Insert: {
+          created_at?: string
+          definition?: string | null
+          id?: string
+          is_active?: boolean
+          key: string
+          max_words?: number | null
+          min_words?: number | null
+          name: string
+          platform?: string
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+          writing_samples?: Json
+        }
+        Update: {
+          created_at?: string
+          definition?: string | null
+          id?: string
+          is_active?: boolean
+          key?: string
+          max_words?: number | null
+          min_words?: number | null
+          name?: string
+          platform?: string
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+          writing_samples?: Json
+        }
+        Relationships: []
+      }
+      hard_rules: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          is_active: boolean
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       insight_cards: {
         Row: {
           content: string
@@ -358,6 +886,7 @@ export type Database = {
           id: string
           insight_type: string | null
           priority: number | null
+          reference_card_id: string | null
           status: string | null
           tags: string[] | null
           title: string
@@ -371,6 +900,7 @@ export type Database = {
           id?: string
           insight_type?: string | null
           priority?: number | null
+          reference_card_id?: string | null
           status?: string | null
           tags?: string[] | null
           title: string
@@ -384,6 +914,7 @@ export type Database = {
           id?: string
           insight_type?: string | null
           priority?: number | null
+          reference_card_id?: string | null
           status?: string | null
           tags?: string[] | null
           title?: string
@@ -391,6 +922,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "insight_cards_reference_card_id_fkey"
+            columns: ["reference_card_id"]
+            isOneToOne: false
+            referencedRelation: "reference_cards"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "insight_cards_user_id_fkey"
             columns: ["user_id"]
@@ -442,9 +980,139 @@ export type Database = {
           },
         ]
       }
+      jobs: {
+        Row: {
+          created_at: string
+          description: string | null
+          funnel_stage: string
+          id: string
+          is_active: boolean
+          key: string
+          kind: string
+          name: string
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          funnel_stage?: string
+          id?: string
+          is_active?: boolean
+          key: string
+          kind?: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          funnel_stage?: string
+          id?: string
+          is_active?: boolean
+          key?: string
+          kind?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      lanes: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          is_wedge: boolean
+          key: string
+          name: string
+          sort_order: number
+          updated_at: string
+          user_id: string
+          vocabulary: string[]
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_wedge?: boolean
+          key: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+          vocabulary?: string[]
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_wedge?: boolean
+          key?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+          vocabulary?: string[]
+        }
+        Relationships: []
+      }
+      natures: {
+        Row: {
+          created_at: string
+          evidence_type: string | null
+          fit: string | null
+          id: string
+          is_active: boolean
+          key: string
+          move: string | null
+          name: string
+          sort_order: number
+          updated_at: string
+          user_id: string
+          writing_samples: Json
+        }
+        Insert: {
+          created_at?: string
+          evidence_type?: string | null
+          fit?: string | null
+          id?: string
+          is_active?: boolean
+          key: string
+          move?: string | null
+          name: string
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+          writing_samples?: Json
+        }
+        Update: {
+          created_at?: string
+          evidence_type?: string | null
+          fit?: string | null
+          id?: string
+          is_active?: boolean
+          key?: string
+          move?: string | null
+          name?: string
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+          writing_samples?: Json
+        }
+        Relationships: []
+      }
       newsletter_emails: {
         Row: {
           from_address: string | null
+          gmail_message_id: string | null
           id: string
           processing_status: string | null
           received_at: string | null
@@ -454,6 +1122,7 @@ export type Database = {
         }
         Insert: {
           from_address?: string | null
+          gmail_message_id?: string | null
           id?: string
           processing_status?: string | null
           received_at?: string | null
@@ -463,6 +1132,7 @@ export type Database = {
         }
         Update: {
           from_address?: string | null
+          gmail_message_id?: string | null
           id?: string
           processing_status?: string | null
           received_at?: string | null
@@ -480,11 +1150,57 @@ export type Database = {
           },
         ]
       }
+      newsletter_health: {
+        Row: {
+          avg_score: number | null
+          card_count: number
+          created_at: string | null
+          id: string
+          last_scanned_at: string | null
+          last_score: number | null
+          reason: string | null
+          recommendation: string
+          sender_address: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          avg_score?: number | null
+          card_count?: number
+          created_at?: string | null
+          id?: string
+          last_scanned_at?: string | null
+          last_score?: number | null
+          reason?: string | null
+          recommendation?: string
+          sender_address: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          avg_score?: number | null
+          card_count?: number
+          created_at?: string | null
+          id?: string
+          last_scanned_at?: string | null
+          last_score?: number | null
+          reason?: string | null
+          recommendation?: string
+          sender_address?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           accent_color: string | null
+          active_question_indices: number[] | null
+          ai_api_key: string | null
+          ai_endpoint: string | null
           ai_model: string | null
           ai_provider: string | null
+          auto_delete_score_threshold: number | null
           brand_voice: string | null
           business_description: string | null
           business_name: string | null
@@ -492,21 +1208,36 @@ export type Database = {
           created_at: string | null
           custom_ai_endpoint: string | null
           custom_ai_model_name: string | null
+          default_post_time: string
+          default_timezone: string | null
           email: string | null
-          google_ai_api_key: string | null
+          gen_first_party_weight: number
+          gen_nature_intensity: number
+          gen_source_reliance: number
+          gen_voice_adherence: number
           id: string
+          low_queue_alert_active: boolean
+          low_queue_email_threshold: number
+          min_approved_threshold: number
           newsletter_domain: string | null
           primary_color: string | null
           secondary_color: string | null
           target_audience: string | null
           updated_at: string | null
           user_id: string
+          visual_design_rules: string | null
+          visual_studio_config: string | null
+          voice_profile: Json | null
           writing_examples: Json | null
         }
         Insert: {
           accent_color?: string | null
+          active_question_indices?: number[] | null
+          ai_api_key?: string | null
+          ai_endpoint?: string | null
           ai_model?: string | null
           ai_provider?: string | null
+          auto_delete_score_threshold?: number | null
           brand_voice?: string | null
           business_description?: string | null
           business_name?: string | null
@@ -514,21 +1245,36 @@ export type Database = {
           created_at?: string | null
           custom_ai_endpoint?: string | null
           custom_ai_model_name?: string | null
+          default_post_time?: string
+          default_timezone?: string | null
           email?: string | null
-          google_ai_api_key?: string | null
+          gen_first_party_weight?: number
+          gen_nature_intensity?: number
+          gen_source_reliance?: number
+          gen_voice_adherence?: number
           id?: string
+          low_queue_alert_active?: boolean
+          low_queue_email_threshold?: number
+          min_approved_threshold?: number
           newsletter_domain?: string | null
           primary_color?: string | null
           secondary_color?: string | null
           target_audience?: string | null
           updated_at?: string | null
           user_id: string
+          visual_design_rules?: string | null
+          visual_studio_config?: string | null
+          voice_profile?: Json | null
           writing_examples?: Json | null
         }
         Update: {
           accent_color?: string | null
+          active_question_indices?: number[] | null
+          ai_api_key?: string | null
+          ai_endpoint?: string | null
           ai_model?: string | null
           ai_provider?: string | null
+          auto_delete_score_threshold?: number | null
           brand_voice?: string | null
           business_description?: string | null
           business_name?: string | null
@@ -536,15 +1282,26 @@ export type Database = {
           created_at?: string | null
           custom_ai_endpoint?: string | null
           custom_ai_model_name?: string | null
+          default_post_time?: string
+          default_timezone?: string | null
           email?: string | null
-          google_ai_api_key?: string | null
+          gen_first_party_weight?: number
+          gen_nature_intensity?: number
+          gen_source_reliance?: number
+          gen_voice_adherence?: number
           id?: string
+          low_queue_alert_active?: boolean
+          low_queue_email_threshold?: number
+          min_approved_threshold?: number
           newsletter_domain?: string | null
           primary_color?: string | null
           secondary_color?: string | null
           target_audience?: string | null
           updated_at?: string | null
           user_id?: string
+          visual_design_rules?: string | null
+          visual_studio_config?: string | null
+          voice_profile?: Json | null
           writing_examples?: Json | null
         }
         Relationships: []
@@ -603,6 +1360,89 @@ export type Database = {
         }
         Relationships: []
       }
+      reader_questions: {
+        Row: {
+          created_at: string
+          id: string
+          question: string
+          reader_id: string
+          sort_order: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          question: string
+          reader_id: string
+          sort_order?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          question?: string
+          reader_id?: string
+          sort_order?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reader_questions_reader_id_fkey"
+            columns: ["reader_id"]
+            isOneToOne: false
+            referencedRelation: "readers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      readers: {
+        Row: {
+          avatar_initials: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          is_published_to: boolean
+          key: string
+          lane_scope: string
+          role: string
+          side: string
+          sort_order: number
+          updated_at: string
+          user_id: string
+          who: string | null
+        }
+        Insert: {
+          avatar_initials?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_published_to?: boolean
+          key: string
+          lane_scope?: string
+          role: string
+          side?: string
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+          who?: string | null
+        }
+        Update: {
+          avatar_initials?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_published_to?: boolean
+          key?: string
+          lane_scope?: string
+          role?: string
+          side?: string
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+          who?: string | null
+        }
+        Relationships: []
+      }
       reference_card_templates: {
         Row: {
           created_at: string | null
@@ -636,13 +1476,17 @@ export type Database = {
       reference_cards: {
         Row: {
           ai_summary: string | null
+          approved: boolean
           content_quality: string | null
           content_warning: string | null
           created_at: string | null
+          force_keep: boolean
+          from_company: boolean
           global_relevance_score: number | null
           id: string
           insight_answers: Json | null
           is_used: boolean | null
+          last_used_at: string | null
           modified_by_user: boolean | null
           original_text: string | null
           question_set_id: string | null
@@ -651,6 +1495,7 @@ export type Database = {
           source_url: string | null
           status: string | null
           template_id: string | null
+          times_used: number
           title: string | null
           updated_at: string | null
           user_id: string | null
@@ -658,13 +1503,17 @@ export type Database = {
         }
         Insert: {
           ai_summary?: string | null
+          approved?: boolean
           content_quality?: string | null
           content_warning?: string | null
           created_at?: string | null
+          force_keep?: boolean
+          from_company?: boolean
           global_relevance_score?: number | null
           id?: string
           insight_answers?: Json | null
           is_used?: boolean | null
+          last_used_at?: string | null
           modified_by_user?: boolean | null
           original_text?: string | null
           question_set_id?: string | null
@@ -673,6 +1522,7 @@ export type Database = {
           source_url?: string | null
           status?: string | null
           template_id?: string | null
+          times_used?: number
           title?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -680,13 +1530,17 @@ export type Database = {
         }
         Update: {
           ai_summary?: string | null
+          approved?: boolean
           content_quality?: string | null
           content_warning?: string | null
           created_at?: string | null
+          force_keep?: boolean
+          from_company?: boolean
           global_relevance_score?: number | null
           id?: string
           insight_answers?: Json | null
           is_used?: boolean | null
+          last_used_at?: string | null
           modified_by_user?: boolean | null
           original_text?: string | null
           question_set_id?: string | null
@@ -695,6 +1549,7 @@ export type Database = {
           source_url?: string | null
           status?: string | null
           template_id?: string | null
+          times_used?: number
           title?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -716,6 +1571,93 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      seeds: {
+        Row: {
+          category: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          lane_scope: string
+          last_used_at: string | null
+          premise: string
+          sort_order: number
+          suggested_nature_key: string | null
+          times_used: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          lane_scope?: string
+          last_used_at?: string | null
+          premise: string
+          sort_order?: number
+          suggested_nature_key?: string | null
+          times_used?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          lane_scope?: string
+          last_used_at?: string | null
+          premise?: string
+          sort_order?: number
+          suggested_nature_key?: string | null
+          times_used?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      social_connections: {
+        Row: {
+          account_label: string | null
+          connected_at: string
+          created_at: string
+          external_account_id: string | null
+          external_profile_id: string | null
+          id: string
+          platform: string
+          provider: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_label?: string | null
+          connected_at?: string
+          created_at?: string
+          external_account_id?: string | null
+          external_profile_id?: string | null
+          id?: string
+          platform: string
+          provider?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_label?: string | null
+          connected_at?: string
+          created_at?: string
+          external_account_id?: string | null
+          external_profile_id?: string | null
+          id?: string
+          platform?: string
+          provider?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       source_feeds: {
         Row: {
@@ -776,6 +1718,50 @@ export type Database = {
           },
         ]
       }
+      swot_items: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          lane_id: string | null
+          quadrant: string
+          sort_order: number
+          threat_class: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          lane_id?: string | null
+          quadrant: string
+          sort_order?: number
+          threat_class?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          lane_id?: string | null
+          quadrant?: string
+          sort_order?: number
+          threat_class?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "swot_items_lane_id_fkey"
+            columns: ["lane_id"]
+            isOneToOne: false
+            referencedRelation: "lanes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_newsletter_emails: {
         Row: {
           created_at: string | null
@@ -809,6 +1795,7 @@ export type Database = {
     }
     Functions: {
       cleanup_rate_limit_logs: { Args: never; Returns: undefined }
+      sweep_relevance_threshold: { Args: never; Returns: number }
     }
     Enums: {
       [_ in never]: never

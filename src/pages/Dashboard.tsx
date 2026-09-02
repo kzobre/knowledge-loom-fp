@@ -2,7 +2,12 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, FileText, Sparkles, Rss, Database, FileEdit, Settings, Plus, MessageCircleQuestion, LogOut, CheckCheck, Clock, Ban, Lightbulb } from "lucide-react";import { InstructionsToggle } from "@/components/InstructionsToggle";
+import {
+  Rss, FileEdit, Settings, MessageCircleQuestion, LogOut,
+  CheckCheck, Lightbulb, Target, CalendarClock, AlertTriangle, Database, Plus, ChevronDown, Search, Palette, HeartPulse,
+} from "lucide-react";
+import { InstructionsToggle } from "@/components/InstructionsToggle";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -12,16 +17,53 @@ const Dashboard = () => {
   const [stats, setStats] = useState({
     pendingReviews: 0,
     approvedDrafts: 0,
-    rejectedDrafts: 0,
-    totalInsights: 0,
-    activeTemplates: 0,
-    scheduledCount: 0 // ✅ Add this
+    minApprovedThreshold: 12,
+    unapprovedCards: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [flaggedNewsletters, setFlaggedNewsletters] = useState<any[]>([]);
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [brandColors, setBrandColors] = useState({
+    primary_color: "#f9655b",
+    secondary_color: "#6658ea",
+    accent_color: "#f5c070",
+  });
 
   useEffect(() => {
     loadDashboardStats();
+    loadNewsletterHealth();
+    loadBrandColors();
   }, []);
+
+  const loadBrandColors = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("primary_color, secondary_color, accent_color")
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+    if (data) {
+      setBrandColors({
+        primary_color: data.primary_color || "#f9655b",
+        secondary_color: data.secondary_color || "#6658ea",
+        accent_color: data.accent_color || "#f5c070",
+      });
+    }
+  };
+
+  const loadNewsletterHealth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data, error } = await supabase
+      .from("newsletter_health")
+      .select("sender_address, avg_score, card_count, recommendation, reason")
+      .eq("user_id", session.user.id)
+      .neq("recommendation", "healthy")
+      .order("avg_score", { ascending: true });
+    if (error) { console.error("Failed to load newsletter health:", error); return; }
+    setFlaggedNewsletters(data || []);
+  };
 
   const loadDashboardStats = async () => {
     setLoading(true);
@@ -31,66 +73,63 @@ const Dashboard = () => {
       setLoading(false);
       return;
     }
+    const userId = session.user.id;
 
     try {
-      // Get draft counts by approval status
-      const { data: drafts, error: draftsError } = await supabase
-        .from("drafts")
-        .select("approval_status")
-        .eq("user_id", session?.user?.id);
-
+      const [
+        { data: allDrafts, error: draftsError },
+        { data: profile, error: profileError },
+        { count: unapprovedCards, error: cardsError },
+      ] = await Promise.all([
+        supabase.from("drafts").select("id, approval_status, publish_status, scheduled_for")
+          .eq("user_id", userId),
+        supabase.from("profiles").select("min_approved_threshold")
+          .eq("user_id", userId).maybeSingle(),
+        // reference_cards.approved gates what generation can cite at all
+        // ("Only approved cards are trusted, citable sources for
+        // generation"). This count is the reason the Reference Cards tile
+        // exists on the dashboard: without visibility into how many cards
+        // are sitting unreviewed, it's easy to ingest hundreds of sources
+        // and never approve more than a handful, which silently caps
+        // generated content to whatever the few approved cards say.
+        supabase.from("reference_cards").select("id", { count: "exact", head: true })
+          .eq("approved", false),
+      ]);
       if (draftsError) throw draftsError;
+      if (profileError) throw profileError;
+      if (cardsError) throw cardsError;
 
-      const pendingReviews = drafts?.filter(d => d.approval_status === "pending").length || 0;
-      const approvedDrafts = drafts?.filter(d => d.approval_status === "approved").length || 0;
-      const rejectedDrafts = drafts?.filter(d => d.approval_status === "rejected").length || 0;
-
-      // Get insight cards count
-      const { data: insights, error: insightsError } = await supabase
-        .from("insight_cards")
-        .select("id")
-        .eq("user_id", session?.user?.id)
-        .eq("status", "active");
-
-      if (insightsError && insightsError.code !== '42P01') throw insightsError;
-
-      // Get active templates count
-      const { data: templates, error: templatesError } = await supabase
-        .from("autopilot_templates")
-        .select("id")
-        .eq("user_id", session?.user?.id)
-        .eq("is_active", true);
-
-      if (templatesError) throw templatesError;
-
-         // ✅ GET SCHEDULED CONTENT COUNT - ADD THIS BEFORE setStats
-      const { data: scheduled, error: scheduledError } = await supabase
-        .from("content_calendar")
-        .select("id")
-        .eq("user_id", session?.user?.id)
-        .eq("status", "scheduled");
+      const drafts = allDrafts || [];
+      const pendingReviews = drafts.filter(d => d.approval_status === "pending" || d.approval_status === "needs_revision").length;
+      // "Ready to publish" means genuinely still queued: approved, actually
+      // handed to Zernio (publish_status='scheduled'), and still in the
+      // future as of right now. This used to be "approved and not posted,"
+      // which double-counted stuck drafts (needs_attention / failed / never
+      // reached the scheduler) as if they were part of a healthy queue —
+      // they're not going anywhere until someone fixes them, so counting
+      // them here made the threshold banner look healthier than reality
+      // (Review's own header count had the same bug and was fixed the same
+      // way; this brings Dashboard in line with it).
+      const nowMs = Date.now();
+      const approvedDrafts = drafts.filter(d =>
+        d.approval_status === "approved" &&
+        d.publish_status === "scheduled" &&
+        !!d.scheduled_for &&
+        new Date(d.scheduled_for).getTime() > nowMs
+      ).length;
 
       setStats({
         pendingReviews,
         approvedDrafts,
-        rejectedDrafts,
-        totalInsights: insights?.length || 0,
-        activeTemplates: templates?.length || 0,
-        scheduledCount: scheduled?.length || 0 // ✅ Add this
+        minApprovedThreshold: (profile as any)?.min_approved_threshold ?? 12,
+        unapprovedCards: unapprovedCards ?? 0,
       });
     } catch (error) {
       console.error("Error loading dashboard stats:", error);
+      toast.error("Failed to load dashboard stats");
     } finally {
       setLoading(false);
     }
-          // Get scheduled content count
-      const { data: scheduled, error: scheduledError } = await supabase
-        .from("content_calendar")
-        .select("id")
-        .eq("user_id", session?.user?.id)
-        .eq("status", "scheduled");
-
-    
   };
 
   const handleLogout = async () => {
@@ -103,122 +142,63 @@ const Dashboard = () => {
     }
   };
 
-  const approvalPipeline = [
+  const captureTier = [
     {
-      title: "Pending Review",
-      count: stats.pendingReviews,
-      description: "Drafts awaiting your approval",
-      icon: Clock,
-      path: "/review",
-      color: "text-yellow-500",
-      badgeVariant: "outline" as const,
-      badgeClass: "bg-yellow-50 text-yellow-700 border-yellow-200"
-    },
-    {
-      title: "Approved",
-      count: stats.approvedDrafts,
-      description: "Drafts ready for publishing",
-      icon: CheckCheck,
-      path: "/drafts",
-      color: "text-green-500",
-      badgeVariant: "outline" as const,
-      badgeClass: "bg-green-50 text-green-700 border-green-200"
-    },
-    {
-      title: "Rejected",
-      count: stats.rejectedDrafts,
-      description: "Drafts that need revision",
-      icon: Ban,
-      path: "/drafts",
-      color: "text-red-500",
-      badgeVariant: "outline" as const,
-      badgeClass: "bg-red-50 text-red-700 border-red-200"
-    }
-  ];
-
-  const gettingStarted = [
-    {
-      title: "Content Sources",
-      description: "Set up Google Alerts or add manual sources",
+      title: "Sources",
+      description: "Newsletters, RSS, manual sources, and journal observations — everything that feeds the engine",
       icon: Rss,
       path: "/feeds",
-      color: "text-orange-500",
     },
     {
-      title: "Observation Journal",
-      description: "Capture and manage your insights",
-      icon: Lightbulb,
-      path: "/insights",
-      color: "text-amber-500",
+      title: "Discover Sources",
+      description: "Search the live web for new high-quality sources — every candidate is auto-scored, only the ones that clear your threshold become reference cards",
+      icon: Search,
+      path: "/discover",
     },
-    {
-      title: "Question Settings",
-      description: "Configure questions for extracting insights",
-      icon: MessageCircleQuestion,
-      path: "/questions",
-      color: "text-cyan-500",
-    },
-    {
-      title: "Create Content",
-      description: "Generate new content from your insights",
-      icon: FileText,
-      path: "/create",
-      color: "text-blue-500",
-    },
-  ];
-
-  const existingContent = [
     {
       title: "Reference Cards",
-      description: "View and manage your reference cards",
+      description: "Approve sources so they're citable in generated content — only approved cards can be cited",
       icon: Database,
       path: "/cards",
-      color: "text-green-500",
-    },
-    {
-      title: "Drafts",
-      description: "View and edit your drafts",
-      icon: FileEdit,
-      path: "/drafts",
-      color: "text-yellow-500",
-    
-    },
-    
-  ];
-
-  const automation = [
-    {
-      title: "Autopilot Templates",
-      description: "Set up automated content generation",
-      icon: Sparkles,
-      path: "/autopilot",
-      color: "text-purple-500",
-    },
-    {
-      title: "Review Queue",
-      description: "Approve or reject automated drafts",
-      icon: CheckCheck,
-      path: "/review",
-      color: "text-blue-500",
-    },
-    {
-      title: "Content Calendar",
-      description: "Schedule and visualize your content pipeline",
-      icon: Calendar,
-      path: "/calendar",
-      color: "text-blue-500",
+      badge: stats.unapprovedCards > 0 ? `${stats.unapprovedCards} need review` : undefined,
     },
   ];
 
-  const configuration = [
+  const configureTier = [
+    {
+      title: "Strategy",
+      description: "Brand, voice, audience, lanes, and the formats library",
+      icon: Target,
+      path: "/strategy",
+    },
+    {
+      title: "Schedule",
+      description: "Cadence, upcoming posts, and what's already gone out",
+      icon: CalendarClock,
+      path: "/schedule",
+    },
+    {
+      title: "Visual Studio",
+      description: "Colors, fonts, and design rules for every generated graphic — the real source, not a preview",
+      icon: Palette,
+      path: "/visual-studio",
+    },
     {
       title: "Settings",
-      description: "Configure your business profile and preferences",
+      description: "AI provider, platform connections, and review pipeline",
       icon: Settings,
       path: "/settings",
-      color: "text-gray-500",
     },
   ];
+
+  const moreLinks = [
+    { title: "All drafts", path: "/drafts", icon: FileEdit },
+    { title: "Reference cards", path: "/cards", icon: Database },
+    { title: "Create content", path: "/create", icon: Plus },
+    { title: "Question settings", path: "/questions", icon: MessageCircleQuestion },
+  ];
+
+  const belowThreshold = stats.approvedDrafts < stats.minApprovedThreshold;
 
   return (
     <div className="min-h-screen bg-background">
@@ -227,7 +207,7 @@ const Dashboard = () => {
           <h1 className="text-3xl font-bold">Insight Forge</h1>
           <Button variant="ghost" onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" />
-            Sign Out
+            Sign out
           </Button>
         </div>
       </header>
@@ -240,126 +220,178 @@ const Dashboard = () => {
           </p>
         </div>
 
-        <InstructionsToggle 
-          instructions={`Getting Started:
-1. Set up your first Google Alert or add a manual source
-2. Capture insights in your Observation Journal
-3. Configure questions to extract insights from content
-4. Create content using your collected insights
-5. Set up automations and review generated drafts
+        <InstructionsToggle
+          instructions={`Getting started:
+1. Set up a source or capture an observation directly in Sources
+2. Approve the reference cards you trust in Reference Cards — only approved cards can be cited in generated content
+3. Create content from your insights
+4. Approve drafts in Review; approval automatically schedules them to their connected platform
+5. Drag a post to a different day on the Schedule page's Upcoming tab if a time needs to move
 
-The dashboard shows your content pipeline and quick access to all features.`}
+The dashboard shows your review pipeline and quick access to everything else.`}
         />
 
-        <div className="space-y-8">
-          {/* Approval Pipeline Section */}
-          {stats.pendingReviews > 0 && (
-            <section>
-              <div className="flex items-center gap-2 mb-4">
-                <CheckCheck className="h-5 w-5 text-primary" />
-                <h3 className="text-xl font-semibold">Approval Pipeline</h3>
-                {stats.pendingReviews > 0 && (
-                  <Badge variant="destructive" className="ml-2">
-                    {stats.pendingReviews} needs attention
-                  </Badge>
-                )}
+        {!loading && belowThreshold && (
+          <Card className="mb-8 border-amber-300 bg-amber-50">
+            <CardContent className="p-4 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-700 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-amber-900">
+                  Only {stats.approvedDrafts} of your goal of {stats.minApprovedThreshold} approved drafts are ready to publish.
+                </p>
+                <p className="text-sm text-amber-800 mt-0.5">
+                  Approve more drafts in Review to keep the publishing pipeline healthy.
+                </p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {approvalPipeline.map((item) => (
-                  <Card
-                    key={item.path}
-                    className={`cursor-pointer hover:shadow-lg transition-shadow ${
-                      item.title === "Pending Review" && item.count > 0 
-                        ? "border-2 border-yellow-300 bg-yellow-50" 
-                        : "border-2 border-primary/20"
-                    }`}
-                    onClick={() => navigate(item.path)}
-                  >
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <item.icon className={`h-8 w-8 ${item.color}`} />
-                          <CardTitle className="text-lg">{item.title}</CardTitle>
+              <Button size="sm" onClick={() => navigate("/review")} className="shrink-0">
+                Go to Review
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {flaggedNewsletters.length > 0 && (
+          <Card className="mb-8 border-orange-300 bg-orange-50">
+            <Collapsible open={healthOpen} onOpenChange={setHealthOpen}>
+              <CollapsibleTrigger asChild>
+                <button className="w-full text-left">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <AlertTriangle className="h-5 w-5 text-orange-700 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium text-orange-900">
+                        {flaggedNewsletters.length} source{flaggedNewsletters.length === 1 ? "" : "s"} flagged by the weekly health scan
+                      </p>
+                      <p className="text-sm text-orange-800 mt-0.5">
+                        Consistently low relevance to your Strategy page. Checked every 7 days — see the Health check page for the full picture or to re-scan now.
+                      </p>
+                    </div>
+                    <ChevronDown className={`h-4 w-4 text-orange-700 shrink-0 transition-transform ${healthOpen ? "rotate-180" : ""}`} />
+                  </CardContent>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="px-4 pb-4 pt-0">
+                  <div className="space-y-2">
+                    {flaggedNewsletters.map((n) => (
+                      <div key={n.sender_address} className="flex items-center justify-between gap-3 text-sm bg-white/60 rounded-md px-3 py-2">
+                        <div className="min-w-0">
+                          <span className="font-medium truncate block">{n.sender_address}</span>
+                          <span className="text-orange-800">{n.reason}</span>
                         </div>
-                        <Badge 
-                          variant={item.badgeVariant} 
-                          className={item.badgeClass}
+                        <Badge
+                          variant="outline"
+                          className={n.recommendation === "unsubscribe" ? "border-destructive text-destructive shrink-0" : "border-orange-400 text-orange-700 shrink-0"}
                         >
-                          {item.count}
+                          {n.recommendation === "unsubscribe" ? "Consider unsubscribing" : "Watch"}
                         </Badge>
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <CardDescription>{item.description}</CardDescription>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Quick Stats */}
-          <section>
-            <h3 className="text-xl font-semibold mb-4">At a Glance</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold text-blue-600">{stats.totalInsights}</div>
-                  <div className="text-sm text-muted-foreground">Insight Cards</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold text-purple-600">{stats.activeTemplates}</div>
-                  <div className="text-sm text-muted-foreground">Active Automations</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold text-yellow-600">{stats.pendingReviews}</div>
-                  <div className="text-sm text-muted-foreground">Pending Reviews</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.approvedDrafts}</div>
-                  <div className="text-sm text-muted-foreground">Approved Drafts</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold text-orange-600">{stats.scheduledCount || 0}</div>
-                  <div className="text-sm text-muted-foreground">Scheduled Posts</div>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-2 w-full"
-                    onClick={() => navigate('/calendar')}
-                  >
-                    View Calendar
+                    ))}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => navigate("/health-check")} className="mt-3">
+                    Go to Health check
                   </Button>
                 </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* Review tier */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <CheckCheck className="h-5 w-5" style={{ color: brandColors.primary_color }} />
+              <h3 className="text-xl font-semibold">Review</h3>
+            </div>
+            <div className="space-y-4">
+              <Card
+                className="cursor-pointer hover:shadow-lg transition-shadow border"
+                style={{ backgroundColor: `${brandColors.primary_color}1a`, borderColor: `${brandColors.primary_color}55` }}
+                onClick={() => navigate("/review")}
+              >
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg p-2" style={{ backgroundColor: brandColors.primary_color }}>
+                        <CheckCheck className="h-6 w-6 text-white" />
+                      </div>
+                      <CardTitle className="text-lg">Review</CardTitle>
+                    </div>
+                    {stats.pendingReviews > 0 && (
+                      <Badge
+                        variant="outline"
+                        style={{ backgroundColor: `${brandColors.primary_color}1a`, color: brandColors.primary_color, borderColor: `${brandColors.primary_color}55` }}
+                      >
+                        {stats.pendingReviews} pending
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription>Pending drafts, approved queue, and the rejection log</CardDescription>
+                </CardContent>
+              </Card>
+
+              <Card
+                className="cursor-pointer hover:shadow-lg transition-shadow border"
+                style={{ backgroundColor: `${brandColors.primary_color}1a`, borderColor: `${brandColors.primary_color}55` }}
+                onClick={() => navigate("/health-check")}
+              >
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg p-2" style={{ backgroundColor: brandColors.primary_color }}>
+                        <HeartPulse className="h-6 w-6 text-white" />
+                      </div>
+                      <CardTitle className="text-lg">Health check</CardTitle>
+                    </div>
+                    {flaggedNewsletters.length > 0 && (
+                      <Badge
+                        variant="outline"
+                        style={{ backgroundColor: `${brandColors.primary_color}1a`, color: brandColors.primary_color, borderColor: `${brandColors.primary_color}55` }}
+                      >
+                        {flaggedNewsletters.length} flagged
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription>How your newsletter sources are performing — re-scan any time, not just the weekly sweep</CardDescription>
+                </CardContent>
               </Card>
             </div>
           </section>
 
-          {/* Getting Started Section */}
+          {/* Capture tier */}
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <Plus className="h-5 w-5 text-primary" />
-              <h3 className="text-xl font-semibold">Getting Started</h3>
+              <Lightbulb className="h-5 w-5" style={{ color: brandColors.secondary_color }} />
+              <h3 className="text-xl font-semibold">Capture</h3>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {gettingStarted.map((item) => (
+            <div className="space-y-4">
+              {captureTier.map((item) => (
                 <Card
                   key={item.path}
-                  className="cursor-pointer hover:shadow-lg transition-shadow border-2 border-primary/20"
+                  className="cursor-pointer hover:shadow-lg transition-shadow border"
+                  style={{ backgroundColor: `${brandColors.secondary_color}1a`, borderColor: `${brandColors.secondary_color}55` }}
                   onClick={() => navigate(item.path)}
                 >
                   <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <item.icon className={`h-8 w-8 ${item.color}`} />
-                      <CardTitle className="text-lg">{item.title}</CardTitle>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-lg p-2" style={{ backgroundColor: brandColors.secondary_color }}>
+                          <item.icon className="h-6 w-6 text-white" />
+                        </div>
+                        <CardTitle className="text-lg">{item.title}</CardTitle>
+                      </div>
+                      {item.badge && (
+                        <Badge
+                          variant="outline"
+                          style={{ backgroundColor: `${brandColors.secondary_color}1a`, color: brandColors.secondary_color, borderColor: `${brandColors.secondary_color}55` }}
+                        >
+                          {item.badge}
+                        </Badge>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -370,67 +402,25 @@ The dashboard shows your content pipeline and quick access to all features.`}
             </div>
           </section>
 
-          {/* Existing Content Section */}
+          {/* Configure tier */}
           <section>
-            <h3 className="text-xl font-semibold mb-4">Your Content</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {existingContent.map((item) => (
-                <Card
-                  key={item.path}
-                  className="cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => navigate(item.path)}
-                >
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <item.icon className={`h-8 w-8 ${item.color}`} />
-                      <CardTitle className="text-lg">{item.title}</CardTitle>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription>{item.description}</CardDescription>
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="flex items-center gap-2 mb-4">
+              <Settings className="h-5 w-5" style={{ color: brandColors.accent_color }} />
+              <h3 className="text-xl font-semibold">Configure</h3>
             </div>
-          </section>
-
-          {/* Automation Section */}
-          <section>
-            <h3 className="text-xl font-semibold mb-4">Automation</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {automation.map((item) => (
+            <div className="space-y-4">
+              {configureTier.map((item) => (
                 <Card
                   key={item.path}
-                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  className="cursor-pointer hover:shadow-lg transition-shadow border"
+                  style={{ backgroundColor: `${brandColors.accent_color}1a`, borderColor: `${brandColors.accent_color}66` }}
                   onClick={() => navigate(item.path)}
                 >
                   <CardHeader>
                     <div className="flex items-center gap-3">
-                      <item.icon className={`h-8 w-8 ${item.color}`} />
-                      <CardTitle className="text-lg">{item.title}</CardTitle>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription>{item.description}</CardDescription>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </section>
-
-          {/* Configuration Section */}
-          <section>
-            <h3 className="text-xl font-semibold mb-4">Configuration</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {configuration.map((item) => (
-                <Card
-                  key={item.path}
-                  className="cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => navigate(item.path)}
-                >
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <item.icon className={`h-8 w-8 ${item.color}`} />
+                      <div className="rounded-lg p-2" style={{ backgroundColor: brandColors.accent_color }}>
+                        <item.icon className="h-6 w-6 text-white" />
+                      </div>
                       <CardTitle className="text-lg">{item.title}</CardTitle>
                     </div>
                   </CardHeader>
@@ -442,6 +432,18 @@ The dashboard shows your content pipeline and quick access to all features.`}
             </div>
           </section>
         </div>
+
+        <section className="mt-8">
+          <h3 className="text-sm font-medium text-muted-foreground mb-3">More</h3>
+          <div className="flex flex-wrap gap-2">
+            {moreLinks.map((item) => (
+              <Button key={item.path} variant="outline" size="sm" onClick={() => navigate(item.path)}>
+                <item.icon className="h-3.5 w-3.5 mr-2" />
+                {item.title}
+              </Button>
+            ))}
+          </div>
+        </section>
       </main>
     </div>
   );

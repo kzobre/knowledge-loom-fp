@@ -3,14 +3,20 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { ArrowLeft, Search, Edit2, ExternalLink, Trash2, ChevronDown, Sparkles, AlertCircle, Plus } from "lucide-react";
+import { ArrowLeft, Search, Edit2, ExternalLink, Trash2, ChevronDown, ChevronLeft, ChevronRight, Sparkles, AlertCircle, Plus, CheckCircle2, ArrowUpDown, ShieldAlert, Settings } from "lucide-react";
 import { InstructionsToggle } from "@/components/InstructionsToggle";
+
+type SortOrder = "newest" | "score_desc" | "score_asc";
+type ApprovalFilter = "all" | "approved" | "unapproved";
+
+const PAGE_SIZE_OPTIONS = [10, 15, 20, 50];
 
 const ReferenceCards = () => {
   const navigate = useNavigate();
@@ -18,10 +24,110 @@ const ReferenceCards = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterSource, setFilterSource] = useState<string>("all");
+  // Separate from filterStatus (the processing pipeline state — processing/
+  // active/archived/needs_review, which is set to "active" automatically
+  // once a card finishes AI processing regardless of approval). This filters
+  // on reference_cards.approved directly, which is the field that actually
+  // gates whether a card is citable in generated content. Conflating the two
+  // is exactly why "Needs Review" (a status filter) showed nothing even
+  // though most cards are correctly unapproved.
+  const [filterApproval, setFilterApproval] = useState<ApprovalFilter>("all");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
+  const [pageSize, setPageSize] = useState<number>(20);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [processingCards, setProcessingCards] = useState<Set<string>>(new Set());
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
   const [questionSets, setQuestionSets] = useState<any[]>([]);
+
+  // Settings section is collapsed by default — this page is meant to be
+  // reviewed quickly and often, and a growing list of configuration options
+  // (auto-delete threshold now, more later) shouldn't compete with that for
+  // space every time the page loads.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Auto-delete rule: cards scoring below this threshold are deleted the
+  // moment a database trigger (enforce_relevance_threshold) sees them
+  // inserted or updated. Stored on the user's profile so it applies
+  // uniformly regardless of which venture/company account this is — every
+  // instance of this app reads its own profile's threshold, so running the
+  // same product for multiple companies just means each one configures its
+  // own number here. Empty = disabled.
+  const [autoDeleteThreshold, setAutoDeleteThreshold] = useState<string>("");
+  const [savingThreshold, setSavingThreshold] = useState(false);
+
+  const loadAutoDeleteThreshold = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("auto_delete_score_threshold")
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+    if (data?.auto_delete_score_threshold != null) {
+      setAutoDeleteThreshold(String(data.auto_delete_score_threshold));
+    }
+  };
+
+  const saveAutoDeleteThreshold = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const trimmed = autoDeleteThreshold.trim();
+    const value = trimmed === "" ? null : Math.max(1, Math.min(10, Math.round(Number(trimmed))));
+    if (trimmed !== "" && (Number.isNaN(value) || value === null)) {
+      toast.error("Enter a number from 1 to 10, or leave blank to disable");
+      return;
+    }
+    setSavingThreshold(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ auto_delete_score_threshold: value })
+      .eq("user_id", session.user.id);
+
+    if (error) {
+      setSavingThreshold(false);
+      toast.error("Failed to save auto-delete threshold");
+      return;
+    }
+
+    setAutoDeleteThreshold(value === null ? "" : String(value));
+
+    // Retroactive half of the rule. Rather than nudging every card's
+    // updated_at and hoping the enforce_relevance_threshold trigger (which
+    // fires on insert/update of a card, not of a profile) happens to re-fire
+    // for each one, call sweep_relevance_threshold() directly: a single
+    // atomic DB function that deletes every one of this user's cards
+    // already below the just-saved number and returns exactly how many it
+    // removed. Deterministic and verifiable, instead of depending on an
+    // incidental side effect of touching an unrelated column.
+    let deletedCount = 0;
+    if (value !== null) {
+      const { data: sweepResult, error: sweepError } = await supabase.rpc("sweep_relevance_threshold");
+      if (sweepError) {
+        console.error("Failed to sweep existing cards against new threshold:", sweepError);
+        toast.error("Threshold saved, but re-checking existing cards failed — try Save again");
+        setSavingThreshold(false);
+        await loadCards();
+        return;
+      }
+      deletedCount = sweepResult ?? 0;
+    }
+
+    setSavingThreshold(false);
+    await loadCards();
+
+    if (value === null) {
+      toast.success("Auto-delete disabled");
+    } else {
+      // Spell out both halves of the rule explicitly every time, so this
+      // is never misread as "only applies to cards scored from now on."
+      toast.success(`Auto-delete threshold set to ${value}`, {
+        description: deletedCount > 0
+          ? `${deletedCount} existing card${deletedCount === 1 ? "" : "s"} already scoring below ${value} ${deletedCount === 1 ? "was" : "were"} deleted just now. Any card scoring below ${value} going forward — via "Process with AI" or incoming newsletters — will be deleted the same way.`
+          : `No existing cards scored below ${value}. Any card scoring below ${value} going forward — via "Process with AI" or incoming newsletters — will be deleted the same way.`,
+      });
+    }
+  };
 
   const loadCards = async () => {
     let query = supabase
@@ -83,8 +189,27 @@ const ReferenceCards = () => {
     } else if (data?.error) {
       console.error("Process card data error:", data.error);
       toast.error("AI processing failed: " + data.error);
+    } else if (data?.deleted) {
+      toast.warning(data.reason || "Card auto-deleted for low relevance score");
+      loadCards();
     } else {
       toast.success("Card processed successfully!");
+      loadCards();
+    }
+  };
+
+  // Deliberate approval. Only approved cards are trusted, citable sources for
+  // generation. Toggled here for quick management; never set automatically on ingest.
+  const toggleApproved = async (card: any) => {
+    const next = !card.approved;
+    const { error } = await supabase
+      .from("reference_cards")
+      .update({ approved: next })
+      .eq("id", card.id);
+    if (error) {
+      toast.error("Failed to update approval");
+    } else {
+      toast.success(next ? "Source approved" : "Approval removed");
       loadCards();
     }
   };
@@ -101,12 +226,21 @@ const ReferenceCards = () => {
     });
   };
 
-  const toggleAllCards = () => {
-    if (selectedCards.size === filteredCards.length) {
-      setSelectedCards(new Set());
-    } else {
-      setSelectedCards(new Set(filteredCards.map(c => c.id)));
-    }
+  // Scoped to the current page only, deliberately — not every filtered card.
+  // Selecting "all" while sorted/filtered across hundreds of cards and then
+  // hitting delete should never be able to wipe out more than what's visibly
+  // on screen right now.
+  const toggleAllOnPage = (pageCards: any[]) => {
+    const allSelected = pageCards.length > 0 && pageCards.every(c => selectedCards.has(c.id));
+    setSelectedCards(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        pageCards.forEach(c => next.delete(c.id));
+      } else {
+        pageCards.forEach(c => next.add(c.id));
+      }
+      return next;
+    });
   };
 
   const bulkDeleteCards = async () => {
@@ -161,14 +295,39 @@ const ReferenceCards = () => {
         return;
       }
       loadCards();
+      loadAutoDeleteThreshold();
     };
     checkAuthAndLoad();
   }, [navigate, filterStatus, filterSource]);
 
-  const filteredCards = cards.filter(card => 
-    card.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    card.original_text?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Any change that reshuffles or shrinks the result set should land back on
+  // page 1 rather than risk sitting on a now-empty or mismatched page.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, filterSource, filterApproval, sortOrder, pageSize]);
+
+  const filteredCards = cards
+    .filter(card =>
+      card.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      card.original_text?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .filter(card => {
+      if (filterApproval === "approved") return card.approved === true;
+      if (filterApproval === "unapproved") return card.approved !== true;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortOrder === "score_desc") return (b.global_relevance_score ?? 0) - (a.global_relevance_score ?? 0);
+      if (sortOrder === "score_asc") return (a.global_relevance_score ?? 0) - (b.global_relevance_score ?? 0);
+      return 0; // "newest" — already ordered this way by the query itself
+    });
+
+  const totalPages = Math.max(1, Math.ceil(filteredCards.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * pageSize;
+  const paginatedCards = filteredCards.slice(pageStart, pageStart + pageSize);
+  const isPageAllSelected = paginatedCards.length > 0 && paginatedCards.every(c => selectedCards.has(c.id));
+  const selectedOnPageCount = paginatedCards.filter(c => selectedCards.has(c.id)).length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -196,12 +355,71 @@ const ReferenceCards = () => {
 - Cards are created from Google Alerts, manual sources, and observations
 - Each card contains content and answers to your configured questions
 - Use filters to find specific cards by status or source type
+- The Approval filter shows approved vs. not-approved cards — this is the field that controls what's citable in generated content, separate from processing Status
+- Sort by relevance score to surface your best (or weakest) candidates first
+- Results are paginated (10/15/20/50 per page). "Select all" only selects the current page, so bulk delete can never wipe out more than what's visibly on screen
+- Open Settings below to configure the auto-delete score threshold and other card-management rules
 - Click "Process with AI" to analyze content and extract insights
 - Content warnings show when full articles couldn't be accessed
 - Click "View Details" to see the full card`}
         />
 
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen} className="mb-6">
+          <Card className="border-amber-200 bg-amber-50/50">
+            <CollapsibleTrigger asChild>
+              <button className="w-full text-left">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Settings className="h-4 w-4 text-amber-700 shrink-0" />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">Settings</span>
+                    {autoDeleteThreshold && (
+                      <span className="text-xs text-muted-foreground ml-2">
+                        (auto-delete below {autoDeleteThreshold})
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-amber-700 shrink-0 transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
+                </CardContent>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="px-4 pb-4 pt-0 space-y-4">
+                <div className="border-t border-amber-200 pt-4">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2 shrink-0">
+                      <ShieldAlert className="h-4 w-4 text-amber-700" />
+                      <Label htmlFor="auto-delete-threshold" className="text-sm font-medium whitespace-nowrap">
+                        Auto-delete cards scoring below
+                      </Label>
+                    </div>
+                    <Input
+                      id="auto-delete-threshold"
+                      type="number"
+                      min={1}
+                      max={10}
+                      placeholder="off"
+                      value={autoDeleteThreshold}
+                      onChange={(e) => setAutoDeleteThreshold(e.target.value)}
+                      className="w-20"
+                    />
+                    <span className="text-sm text-muted-foreground">/ 10 (blank = disabled)</span>
+                    <Button size="sm" onClick={saveAutoDeleteThreshold} disabled={savingThreshold}>
+                      {savingThreshold ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Applies both ways, immediately: saving deletes every existing card already scoring below this number right now, and any card that scores below it going forward — via "Process with AI" here, or automatically for incoming newsletters — is deleted the same way. Cards below the threshold are deleted outright, not just flagged.
+                  </p>
+                </div>
+                {/* Future settings go here, as additional bordered sections
+                    inside this same collapsible, rather than as new
+                    always-visible blocks on the page. */}
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+
+        <div className="flex flex-col md:flex-row gap-4 mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
@@ -218,7 +436,7 @@ const ReferenceCards = () => {
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
               <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="needs_review">Needs Review</SelectItem>
+              <SelectItem value="needs_review">Needs Review (processing)</SelectItem>
               <SelectItem value="archived">Archived</SelectItem>
             </SelectContent>
           </Select>
@@ -235,16 +453,59 @@ const ReferenceCards = () => {
               <SelectItem value="observation">Observation Journal</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={filterApproval} onValueChange={(v) => setFilterApproval(v as ApprovalFilter)}>
+            <SelectTrigger className="w-full md:w-48">
+              <SelectValue placeholder="Filter by approval" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Approval States</SelectItem>
+              <SelectItem value="unapproved">Not Approved</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as SortOrder)}>
+            <SelectTrigger className="w-full md:w-56">
+              <ArrowUpDown className="h-3.5 w-3.5 mr-2 shrink-0" />
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest first</SelectItem>
+              <SelectItem value="score_desc">Highest score first</SelectItem>
+              <SelectItem value="score_asc">Lowest score first</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        {filteredCards.length > 0 && (
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+          <p className="text-sm text-muted-foreground">
+            {filteredCards.length} card{filteredCards.length === 1 ? "" : "s"} match{filteredCards.length === 1 ? "es" : ""} your filters
+          </p>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Show</span>
+            <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">per page</span>
+          </div>
+        </div>
+
+        {paginatedCards.length > 0 && (
           <div className="flex items-center gap-4 mb-4 p-4 bg-muted rounded-lg">
             <Checkbox 
-              checked={selectedCards.size === filteredCards.length}
-              onCheckedChange={toggleAllCards}
+              checked={isPageAllSelected}
+              onCheckedChange={() => toggleAllOnPage(paginatedCards)}
             />
             <span className="text-sm font-medium">
-              {selectedCards.size > 0 ? `${selectedCards.size} selected` : "Select all"}
+              {selectedOnPageCount > 0
+                ? `${selectedOnPageCount} selected on this page`
+                : `Select all on this page (${paginatedCards.length})`}
             </span>
             {selectedCards.size > 0 && (
               <Button 
@@ -253,15 +514,15 @@ const ReferenceCards = () => {
                 onClick={bulkDeleteCards}
               >
                 <Trash2 className="h-4 w-4 mr-1" />
-                Delete Selected
+                Delete {selectedCards.size} Selected
               </Button>
             )}
           </div>
         )}
 
         <div className="grid gap-4">
-          {filteredCards.map((card) => (
-            <Card key={card.id} className="hover:shadow-md transition-shadow">
+          {paginatedCards.map((card) => (
+            <Card key={card.id} className="hover:shadow-md transition-shadow overflow-hidden">
               <CardHeader>
                 <div className="flex justify-between items-start gap-3">
                   <Checkbox 
@@ -269,9 +530,9 @@ const ReferenceCards = () => {
                     onCheckedChange={() => toggleCardSelection(card.id)}
                     className="mt-1"
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-start gap-2 mb-2">
-                      <CardTitle className="text-lg flex-1">{card.title || "Untitled"}</CardTitle>
+                      <CardTitle className="text-lg flex-1 break-words">{card.title || "Untitled"}</CardTitle>
                       {card.source_url && (
                         <a 
                           href={card.source_url} 
@@ -289,6 +550,9 @@ const ReferenceCards = () => {
                       </Badge>
                       <Badge variant="outline">{card.source_type}</Badge>
                       <Badge variant="outline">Score: {card.global_relevance_score}/10</Badge>
+                      <Badge variant={card.approved ? "default" : "outline"}>
+                        {card.approved ? "Approved source" : "Not approved"}
+                      </Badge>
                       {card.content_quality === "title_only" && (
                         <Badge variant="destructive">Title Only</Badge>
                       )}
@@ -309,15 +573,23 @@ const ReferenceCards = () => {
                     {card.content_warning && (
                       <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
                         <AlertCircle className="h-4 w-4" />
-                        <span>{card.content_warning}</span>
+                        <span className="break-words">{card.content_warning}</span>
                       </div>
                     )}
                   </div>
                   <div className="flex gap-2">
+                    <Button
+                      variant={card.approved ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => toggleApproved(card)}
+                    >
+                      <CheckCircle2 className="h-4 w-4 mr-1" />
+                      {card.approved ? "Approved" : "Approve"}
+                    </Button>
                     {!card.ai_summary && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => processCard(card.id)}
                         disabled={processingCards.has(card.id)}
                       >
@@ -334,16 +606,16 @@ const ReferenceCards = () => {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="min-w-0">
                 <Collapsible open={expandedCards.has(card.id)} onOpenChange={() => toggleCardExpanded(card.id)}>
-                  <div>
+                  <div className="min-w-0">
                     {card.ai_summary && (
-                      <div className="mb-3 p-3 bg-muted rounded-md">
+                      <div className="mb-3 p-3 bg-muted rounded-md min-w-0">
                         <p className="text-sm font-medium mb-1">AI Summary:</p>
-                        <p className="text-sm text-muted-foreground">{card.ai_summary}</p>
+                        <p className="text-sm text-muted-foreground break-words">{card.ai_summary}</p>
                       </div>
                     )}
-                    <p className="text-sm text-muted-foreground line-clamp-3">
+                    <p className="text-sm text-muted-foreground line-clamp-3 break-words">
                       {card.original_text}
                     </p>
                   </div>
@@ -354,17 +626,26 @@ const ReferenceCards = () => {
                     </Button>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <div className="mt-4 space-y-2">
-                      <p className="text-sm whitespace-pre-wrap">{card.original_text}</p>
+                    <div className="mt-4 space-y-2 min-w-0">
+                      <p className="text-sm whitespace-pre-wrap break-words">{card.original_text}</p>
                       {card.insight_answers && Object.keys(card.insight_answers).length > 0 && (
                         <div className="mt-4 border-t pt-4">
                           <p className="text-sm font-medium mb-2">Insight Answers:</p>
-                          {Object.entries(card.insight_answers).map(([key, value]) => (
-                            <div key={key} className="text-sm mb-2">
-                              <p className="font-medium">Q{parseInt(key) + 1}:</p>
-                              <p className="text-muted-foreground">{value as string}</p>
-                            </div>
-                          ))}
+                          {Object.entries(card.insight_answers).map(([key, value]) => {
+                            // insight_answers is keyed by the literal question
+                            // text itself (see process-reference-card's
+                            // prompt: "answers": {"<question>": "answer"}),
+                            // not by numeric index. Rendering key directly.
+                            const isCustom = typeof value === "object" && value !== null && "question" in (value as any);
+                            const label = isCustom ? `Custom: ${(value as any).question}` : key;
+                            const answerText = isCustom ? (value as any).answer : (value as string);
+                            return (
+                              <div key={key} className="text-sm mb-2">
+                                <p className="font-medium">{label}</p>
+                                <p className="text-muted-foreground break-words">{answerText}</p>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -378,6 +659,37 @@ const ReferenceCards = () => {
         {filteredCards.length === 0 && (
           <div className="text-center py-12 text-muted-foreground">
             No reference cards found. Set up Google Alerts or add manual sources to get started.
+          </div>
+        )}
+
+        {filteredCards.length > 0 && (
+          <div className="flex items-center justify-between mt-6">
+            <p className="text-sm text-muted-foreground">
+              Showing {pageStart + 1}-{Math.min(pageStart + pageSize, filteredCards.length)} of {filteredCards.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={safePage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground px-2">
+                Page {safePage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={safePage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
           </div>
         )}
       </main>

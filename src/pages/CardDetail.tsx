@@ -8,19 +8,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, Save, ExternalLink, AlertCircle, Sparkles, MessageSquare } from "lucide-react";
+import { ArrowLeft, Save, ExternalLink, AlertCircle, Sparkles, MessageSquare, CheckCircle2, Trash2 } from "lucide-react";
+import { useBusinessName } from "@/hooks/useBusinessName";
 
 const CardDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const businessName = useBusinessName();
   const [card, setCard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
   const [editedText, setEditedText] = useState("");
+  const [editedFromCompany, setEditedFromCompany] = useState(false);
+  const [editedApproved, setEditedApproved] = useState(false);
   const [questions, setQuestions] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const [questionSets, setQuestionSets] = useState<any[]>([]);
   const [selectedQuestionSetId, setSelectedQuestionSetId] = useState<string>("");
   const [customQuestion, setCustomQuestion] = useState("");
@@ -48,6 +55,8 @@ const CardDetail = () => {
       setCard(data);
       setEditedTitle(data.title || "");
       setEditedText(data.original_text || "");
+      setEditedFromCompany(data.from_company ?? false);
+      setEditedApproved(data.approved ?? false);
       await loadQuestions(data);
     }
     setLoading(false);
@@ -109,6 +118,8 @@ const CardDetail = () => {
       .update({
         title: editedTitle,
         original_text: editedText,
+        from_company: editedFromCompany,
+        approved: editedApproved,
         modified_by_user: true,
       })
       .eq("id", id);
@@ -120,6 +131,32 @@ const CardDetail = () => {
       setEditing(false);
       loadCard();
     }
+  };
+
+  // Quick approve/reject right from the header, independent of Edit mode —
+  // entering Edit, flipping a switch, and Saving just to approve a card was
+  // several clicks for something that should be one.
+  const toggleApproved = async () => {
+    setApproving(true);
+    const next = !card.approved;
+    const { error } = await supabase.from("reference_cards").update({ approved: next }).eq("id", id);
+    setApproving(false);
+    if (error) { toast.error("Failed to update approval"); return; }
+    setCard((prev: any) => ({ ...prev, approved: next }));
+    setEditedApproved(next);
+    toast.success(next ? "Approved — citable in generated content now." : "Approval removed.");
+  };
+
+  // Deletes the card outright. "Reject" here means the source shouldn't
+  // exist, not just "not approved" (already every new card's default).
+  const rejectCard = async () => {
+    if (!confirm(`Delete "${card.title || "this card"}"? This action cannot be undone.`)) return;
+    setRejecting(true);
+    const { error } = await supabase.from("reference_cards").delete().eq("id", id);
+    setRejecting(false);
+    if (error) { toast.error("Failed to delete card"); return; }
+    toast.success("Card deleted");
+    navigate("/cards");
   };
 
   const processCard = async () => {
@@ -138,6 +175,12 @@ const CardDetail = () => {
     } else if (data?.error) {
       console.error("Process card data error:", data.error);
       toast.error("AI processing failed: " + data.error);
+    } else if (data?.deleted) {
+      // The card scored below the user's configured auto-delete threshold
+      // (see process-reference-card) and no longer exists — nothing left
+      // here to reload, so leave the detail page entirely.
+      toast.warning(data.reason || "Card auto-deleted for low relevance score");
+      navigate("/cards");
     } else {
       toast.success("Card processed successfully!");
       loadCard();
@@ -189,6 +232,13 @@ const CardDetail = () => {
     } else if (data?.error) {
       console.error("Custom question data error:", data.error);
       toast.error("AI processing failed: " + data.error);
+    } else if (data?.deleted) {
+      // Answering a custom question still rescoring the card through the
+      // same relevance check — a card below the auto-delete threshold gets
+      // removed rather than answered. Surface why, since the question
+      // itself never got saved anywhere.
+      toast.warning(data.reason || "Card auto-deleted for low relevance score before the question could be answered");
+      navigate("/cards");
     } else {
       toast.success("Custom question answered and saved to card!");
       setCustomQuestion("");
@@ -220,12 +270,29 @@ const CardDetail = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center flex-wrap gap-2">
           <Button variant="ghost" onClick={() => navigate("/cards")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Reference Cards
           </Button>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant={card.approved ? "outline" : "default"}
+              onClick={toggleApproved}
+              disabled={approving}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1" />
+              {approving ? "Updating..." : card.approved ? "Unapprove" : "Approve"}
+            </Button>
+            <Button
+              variant="outline"
+              className="text-red-600 border-red-200 hover:bg-red-50"
+              onClick={rejectCard}
+              disabled={rejecting}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              {rejecting ? "Deleting..." : "Reject"}
+            </Button>
             {!card.ai_summary && (
               <Button
                 variant="outline"
@@ -247,7 +314,7 @@ const CardDetail = () => {
                 </Button>
               </>
             ) : (
-              <Button onClick={() => setEditing(true)}>
+              <Button variant="outline" onClick={() => setEditing(true)}>
                 Edit
               </Button>
             )}
@@ -284,6 +351,10 @@ const CardDetail = () => {
                   {card.content_quality === "error" && (
                     <Badge variant="destructive">Error</Badge>
                   )}
+                  <Badge variant={card.approved ? "default" : "outline"}>
+                    {card.approved ? "Approved source" : "Not approved"}
+                  </Badge>
+                  {card.from_company && <Badge variant="default">From the company</Badge>}
                   {card.modified_by_user && <Badge variant="secondary">User Modified</Badge>}
                   {card.source_feeds?.name && (
                     <Badge variant="outline" className="gap-1">
@@ -334,6 +405,29 @@ const CardDetail = () => {
               )}
             </div>
 
+            {editing && (
+              <div className="mb-6 space-y-3">
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5 pr-3">
+                    <Label>Approved source</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Only approved cards are trusted, citable sources for generation. Approval is deliberate and never set automatically on ingest.
+                    </p>
+                  </div>
+                  <Switch checked={editedApproved} onCheckedChange={setEditedApproved} />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5 pr-3">
+                    <Label>From the company (first-party)</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Mark this as {businessName}'s own material so the writer can weight and anchor on it.
+                    </p>
+                  </div>
+                  <Switch checked={editedFromCompany} onCheckedChange={setEditedFromCompany} />
+                </div>
+              </div>
+            )}
+
             {card.insight_answers && Object.keys(card.insight_answers).length > 0 && (
               <div className="border-t pt-6">
                 <h3 className="text-lg font-semibold mb-4">Processed Insights</h3>
@@ -363,14 +457,20 @@ const CardDetail = () => {
                         </Card>
                       );
                     } else {
-                      // Standard question from question set
-                      const questionIndex = parseInt(key);
-                      const question = questions[questionIndex];
+                      // Standard question from a question set. insight_answers
+                      // is keyed by the literal question text itself (see
+                      // process-reference-card's prompt construction:
+                      // "answers": {"<question text>": "answer"}), not a
+                      // numeric index — the key IS the question, so it's
+                      // rendered directly rather than looked up by parseInt
+                      // against the locally-loaded questions array (which
+                      // silently produced "QNaN" for every card, since a
+                      // full sentence never parses as a number).
                       return (
                         <Card key={key}>
                           <CardHeader>
                             <CardTitle className="text-base">
-                              Q{questionIndex + 1}: {question || "Question not found"}
+                              {key}
                             </CardTitle>
                           </CardHeader>
                           <CardContent>

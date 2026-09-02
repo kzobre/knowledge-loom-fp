@@ -1,0 +1,11 @@
+-- SUPERSEDED by 20260613000000_knowledge_loom_rebuild_schema.sql. Intentionally a no-op.
+--
+-- This migration never ran on the target project. It originally created content_schedules
+-- with the pre-rebuild shape (content_type_id text, child_content_type_id, etc.) and added
+-- a drafts.child_content_type_id column. The rebuild migration creates content_schedules
+-- with the slot-model shape (format_id, nature_id, job_id, lane_id, reader_id) and adds the
+-- drafts reuse columns itself, and the new model deliberately omits child_content_type_id.
+--
+-- Its body was voided so a fresh `db reset` or fresh-project deploy replays cleanly: the
+-- rebuild migration is the sole creator of content_schedules and the drafts reuse layer,
+-- which matches the live database. Do not restore DDL here; edit the rebuild migration instead.

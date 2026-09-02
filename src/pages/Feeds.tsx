@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,44 +27,54 @@ import {
   ChevronDown,
   Sparkles,
   Mail,
-  Copy,
-  CheckCircle,
-  Settings,
   ExternalLink,
+  ClipboardPaste,
+  Rss,
+  Lightbulb,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { InstructionsToggle } from "@/components/InstructionsToggle";
+import { useBusinessName } from "@/hooks/useBusinessName";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
 import { parsePDF } from "@/lib/pdf-parser";
+import { ObservationsTab } from "@/components/sources/ObservationsTab";
+
+const VALID_TABS = ["automated", "manual", "observations"];
 
 const Feeds = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeTab = VALID_TABS.includes(tabParam || "") ? tabParam! : "automated";
+  const businessName = useBusinessName();
   const [feeds, setFeeds] = useState<any[]>([]);
   const [selectedQuestionSet, setSelectedQuestionSet] = useState("default");
 
   const [manualSourceDialogOpen, setManualSourceDialogOpen] = useState(false);
-  const [manualSourceType, setManualSourceType] = useState<"url" | "pdf">("url");
+  const [manualSourceType, setManualSourceType] = useState<"url" | "pdf" | "paste">("url");
   const [manualUrl, setManualUrl] = useState("");
   const [manualPdfFile, setManualPdfFile] = useState<File | null>(null);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteTitle, setPasteTitle] = useState("");
+  const [manualFromCompany, setManualFromCompany] = useState(false);
   const [creatingManualSource, setCreatingManualSource] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"newsletter" | "manual">("newsletter");
   const [expandedFeeds, setExpandedFeeds] = useState<Set<string>>(new Set());
   const [refCardsByFeed, setRefCardsByFeed] = useState<Record<string, any[]>>({});
   const [loadingRefs, setLoadingRefs] = useState(false);
   const [questionSets, setQuestionSets] = useState<any[]>([]);
 
-  // Newsletter inbox state
-  const [newsletterDomain, setNewsletterDomain] = useState<string | null>(null);
-  const [userNewsletterEmail, setUserNewsletterEmail] = useState<string | null>(null);
-  const [loadingNewsletter, setLoadingNewsletter] = useState(true);
-  const [copied, setCopied] = useState(false);
   const [recentEmails, setRecentEmails] = useState<any[]>([]);
   const [loadingEmails, setLoadingEmails] = useState(false);
-  const [emailDetailsOpen, setEmailDetailsOpen] = useState(false);
+
+  // Automated reference cards (rss + newsletter) are queried directly by
+  // source_type rather than through source_feeds, since newsletter-sourced
+  // cards never get a source_feed_id (there's no per-newsletter feed row) -
+  // grouping by feed was hiding them entirely.
+  const [automatedCards, setAutomatedCards] = useState<any[]>([]);
+  const [loadingAutomatedCards, setLoadingAutomatedCards] = useState(false);
 
   const loadReferenceCards = async (feedIds: string[]) => {
     if (!feedIds.length) return;
@@ -87,7 +98,6 @@ const Feeds = () => {
 
   const loadFeeds = async () => {
     const { data, error } = await supabase.from("source_feeds").select("*").order("created_at", { ascending: false });
-
     if (error) {
       toast.error("Failed to load feeds");
     } else {
@@ -102,7 +112,6 @@ const Feeds = () => {
       .from("question_sets")
       .select("*")
       .order("created_at", { ascending: false });
-
     if (error) {
       console.error("Failed to load question sets:", error);
     } else {
@@ -113,82 +122,6 @@ const Feeds = () => {
     }
   };
 
-  const loadNewsletterConfig = async () => {
-    setLoadingNewsletter(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      setLoadingNewsletter(false);
-      return;
-    }
-
-    // Load profile to get newsletter_domain
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("newsletter_domain")
-      .eq("user_id", session.user.id)
-      .single();
-
-    const domain = profile?.newsletter_domain || null;
-    setNewsletterDomain(domain);
-
-    if (!domain) {
-      setLoadingNewsletter(false);
-      return;
-    }
-
-    // Check if user already has a newsletter email
-    const { data: existingEmail } = await supabase
-      .from("user_newsletter_emails")
-      .select("email_address, email_prefix")
-      .eq("user_id", session.user.id)
-      .eq("is_active", true)
-      .single();
-
-    if (existingEmail) {
-      // Check if domain has changed - update email if so
-      const expectedEmail = `${existingEmail.email_prefix}@${domain}`;
-      
-      if (existingEmail.email_address !== expectedEmail) {
-        // Domain changed - update the email address
-        const { error: updateError } = await supabase
-          .from("user_newsletter_emails")
-          .update({ email_address: expectedEmail })
-          .eq("user_id", session.user.id)
-          .eq("is_active", true);
-        
-        if (updateError) {
-          console.error("Failed to update newsletter email domain:", updateError);
-        }
-        setUserNewsletterEmail(expectedEmail);
-      } else {
-        setUserNewsletterEmail(existingEmail.email_address);
-      }
-    } else {
-      // Generate a new email with crypto-secure random prefix
-      const prefix = `user-${crypto.randomUUID().slice(0, 12)}`;
-      const email = `${prefix}@${domain}`;
-
-      // Save to database
-      const { error: insertError } = await supabase
-        .from("user_newsletter_emails")
-        .insert({
-          user_id: session.user.id,
-          email_address: email,
-          email_prefix: prefix,
-          is_active: true,
-        });
-
-      if (insertError) {
-        console.error("Failed to save newsletter email:", insertError);
-        toast.error("Failed to generate newsletter email");
-      } else {
-        setUserNewsletterEmail(email);
-      }
-    }
-
-    setLoadingNewsletter(false);
-  };
-
   const loadRecentEmails = async () => {
     setLoadingEmails(true);
     const { data, error } = await supabase
@@ -196,62 +129,73 @@ const Feeds = () => {
       .select("id, subject, from_address, received_at, processing_status, reference_card_id")
       .order("received_at", { ascending: false })
       .limit(10);
-
-    if (error) {
-      console.error("Failed to load recent emails:", error);
-    } else {
-      setRecentEmails(data || []);
-    }
+    if (error) { console.error("Failed to load recent emails:", error); }
+    else { setRecentEmails(data || []); }
     setLoadingEmails(false);
+  };
+
+  const loadAutomatedCards = async () => {
+    setLoadingAutomatedCards(true);
+    const { data, error } = await supabase
+      .from("reference_cards")
+      .select("id,title,content_quality,content_warning,ai_summary,status,source_type,created_at")
+      .in("source_type", ["rss", "newsletter"])
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) { console.error("Failed to load automated reference cards:", error); }
+    else { setAutomatedCards(data || []); }
+    setLoadingAutomatedCards(false);
   };
 
   useEffect(() => {
     loadFeeds();
     loadQuestionSets();
-    loadNewsletterConfig();
     loadRecentEmails();
+    loadAutomatedCards();
   }, [navigate]);
 
   const deleteFeed = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
-      return;
-    }
-
+    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) return;
     const { error } = await supabase.from("source_feeds").delete().eq("id", id);
-
-    if (error) {
-      toast.error("Failed to delete feed");
-    } else {
-      toast.success("Feed deleted");
-      loadFeeds();
-    }
+    if (error) { toast.error("Failed to delete feed"); }
+    else { toast.success("Feed deleted"); loadFeeds(); }
   };
 
   const toggleFeedExpanded = (id: string) => {
     setExpandedFeeds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
 
+  const resetDialog = () => {
+    setManualUrl("");
+    setManualPdfFile(null);
+    setPasteText("");
+    setPasteTitle("");
+    setManualFromCompany(false);
+    setManualSourceType("url");
+  };
+
   const createManualSource = async () => {
     if (manualSourceType === "url" && !manualUrl.trim()) {
-      toast.error("Please enter a URL");
-      return;
+      toast.error("Please enter a URL"); return;
     }
     if (manualSourceType === "pdf" && !manualPdfFile) {
-      toast.error("Please select a PDF file");
-      return;
+      toast.error("Please select a PDF file"); return;
+    }
+    if (manualSourceType === "paste" && !pasteText.trim()) {
+      toast.error("Please paste some text"); return;
     }
 
     setCreatingManualSource(true);
-    console.log("🟡 Starting manual source creation...");
     const toastId = toast.loading(
-      manualSourceType === "pdf" 
-        ? "Parsing PDF and creating reference card..." 
-        : "Creating reference card from source..."
+      manualSourceType === "pdf"
+        ? "Parsing PDF and creating reference card..."
+        : manualSourceType === "paste"
+          ? "Creating reference card from pasted text..."
+          : "Creating reference card from source..."
     );
 
     try {
@@ -266,80 +210,53 @@ const Feeds = () => {
       let pdfTitle = "";
 
       if (manualSourceType === "pdf" && manualPdfFile) {
-        console.log("📄 Parsing PDF...");
         toast.loading("Extracting text from PDF...", { id: toastId });
-        
         try {
           const parseResult = await parsePDF(manualPdfFile);
           pdfText = parseResult.text;
           pdfTitle = parseResult.title;
-          
           if (!pdfText || pdfText.length < 50) {
             toast.error("Could not extract sufficient text from PDF. The file may be image-based or protected.", { id: toastId });
             return;
           }
-          
-          console.log(`✅ PDF parsed: ${parseResult.pageCount} pages, ${pdfText.length} characters`);
           toast.loading("Creating reference card...", { id: toastId });
         } catch (parseError) {
-          console.error("❌ PDF parse error:", parseError);
           toast.error(parseError instanceof Error ? parseError.message : "Failed to parse PDF file", { id: toastId });
           return;
         }
       }
 
-      console.log("📤 Calling edge function with:", {
+      const body: Record<string, any> = {
         type: manualSourceType,
-        url: manualUrl,
         user_id: session.user.id,
         question_set_id: selectedQuestionSet,
-        has_pdf_content: !!pdfText
-      });
+        from_company: manualFromCompany,
+      };
 
-      const { data, error } = await supabase.functions.invoke("create-manual-source", {
-        body: {
-          type: manualSourceType,
-          url: manualSourceType === "url" ? manualUrl : undefined,
-          pdf_text: manualSourceType === "pdf" ? pdfText : undefined,
-          pdf_title: manualSourceType === "pdf" ? pdfTitle : undefined,
-          user_id: session.user.id,
-          question_set_id: selectedQuestionSet,
-        },
-      });
+      if (manualSourceType === "url") {
+        body.url = manualUrl;
+      } else if (manualSourceType === "pdf") {
+        body.pdf_text = pdfText;
+        body.pdf_title = pdfTitle;
+      } else if (manualSourceType === "paste") {
+        body.paste_text = pasteText.trim();
+        body.paste_title = pasteTitle.trim() || undefined;
+      }
 
-      console.log("📥 Edge function response:", { data, error });
+      const { data, error } = await supabase.functions.invoke("create-manual-source", { body });
 
       if (error) {
-        console.error("❌ Edge function error:", error);
         toast.error("Failed to create source: " + error.message, { id: toastId });
       } else {
-        console.log("✅ Manual source created successfully:", data);
         toast.success("Reference card created and processing!", { id: toastId });
         setManualSourceDialogOpen(false);
-        setManualUrl("");
-        setManualPdfFile(null);
-        setTimeout(() => {
-          loadFeeds();
-          navigate("/cards");
-        }, 1500);
+        resetDialog();
+        setTimeout(() => { loadFeeds(); navigate("/cards"); }, 1500);
       }
     } catch (error: any) {
-      console.error("💥 Unexpected error:", error);
       toast.error("Unexpected error: " + error.message, { id: toastId });
     } finally {
       setCreatingManualSource(false);
-    }
-  };
-
-  const copyEmailToClipboard = async () => {
-    if (!userNewsletterEmail) return;
-    try {
-      await navigator.clipboard.writeText(userNewsletterEmail);
-      setCopied(true);
-      toast.success("Email copied to clipboard!");
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      toast.error("Failed to copy email");
     }
   };
 
@@ -348,286 +265,304 @@ const Feeds = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto px-4 py-4">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            <ArrowLeft className="mr-2 h-4 w-4" />Back to Dashboard
           </Button>
-          <Dialog open={manualSourceDialogOpen} onOpenChange={setManualSourceDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Plus className="mr-2 h-4 w-4" />
-                Manual Source
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create Manual Source</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="flex gap-2">
-                  <Button
-                    variant={manualSourceType === "url" ? "default" : "outline"}
-                    onClick={() => setManualSourceType("url")}
-                  >
-                    <LinkIcon className="mr-2 h-4 w-4" />
-                    Article URL
-                  </Button>
-                  <Button
-                    variant={manualSourceType === "pdf" ? "default" : "outline"}
-                    onClick={() => setManualSourceType("pdf")}
-                  >
-                    <FileUp className="mr-2 h-4 w-4" />
-                    Upload PDF
-                  </Button>
-                </div>
-
-                {manualSourceType === "url" && (
-                  <div className="space-y-2">
-                    <Label>Article URL</Label>
-                    <Input
-                      placeholder="https://example.com/article"
-                      value={manualUrl}
-                      onChange={(e) => setManualUrl(e.target.value)}
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label>Question Set</Label>
-                  <Select value={selectedQuestionSet} onValueChange={setSelectedQuestionSet}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select question set" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {questionSets.map((set) => (
-                        <SelectItem key={set.id} value={set.id}>
-                          {set.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-muted-foreground">
-                    Choose which questions to use for content from this source
-                  </p>
-                </div>
-
-                {manualSourceType === "pdf" && (
-                  <div className="space-y-2">
-                    <Label>Upload PDF</Label>
-                    <Input
-                      type="file"
-                      accept=".pdf"
-                      onChange={(e) => setManualPdfFile(e.target.files?.[0] || null)}
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Upload a PDF document to extract content and create a reference card
-                    </p>
-                  </div>
-                )}
-
-                <Button
-                  onClick={createManualSource}
-                  className="w-full"
-                  disabled={creatingManualSource}
-                >
-                  {creatingManualSource ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    "Create Reference Card"
-                  )}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-4">Content Sources</h1>
+        <h1 className="text-3xl font-bold mb-4">Sources</h1>
 
         <InstructionsToggle
-          instructions={`Content Sources helps you bring content into Insight Forge:
+          instructions={`Sources brings everything that feeds the engine into one place:
 
-1. Newsletter Inbox: Subscribe to any newsletter using your unique email address
-2. Manual Sources: Paste article links or upload PDFs directly
+1. Automated: Newsletters are ingested automatically via the Gmail label watcher. Reference cards appear here automatically - an AI relevance gate filters out noise before a card is ever created.
+2. Manual: Paste article links, upload PDFs, or paste full article text directly
+3. Observations: Capture thesis statements, hooks, and other journal entries - each one becomes a citable reference card as soon as you save it
 
-Reference cards are created from your sources and can be used for content generation.`}
+Reference cards are created from your sources and used for content generation.`}
         />
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "newsletter" | "manual")}>
+        <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v })}>
           <TabsList className="mb-4">
-            <TabsTrigger value="newsletter">
-              <Mail className="h-4 w-4 mr-2" />
-              Newsletter Inbox
+            <TabsTrigger value="automated">
+              <Rss className="h-4 w-4 mr-2" />Automated
             </TabsTrigger>
-            <TabsTrigger value="manual">Manual Sources</TabsTrigger>
+            <TabsTrigger value="manual">Manual</TabsTrigger>
+            <TabsTrigger value="observations">
+              <Lightbulb className="h-4 w-4 mr-2" />Observations
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="newsletter">
-            {loadingNewsletter ? (
-              <Card>
-                <CardContent className="py-8 text-center">
-                  <RefreshCw className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Loading newsletter configuration...</p>
-                </CardContent>
-              </Card>
-            ) : !newsletterDomain ? (
-              <Card>
-                <CardContent className="py-8 text-center">
-                  <Mail className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Newsletter Inbox Not Configured</h3>
-                  <p className="text-muted-foreground mb-4 max-w-md mx-auto">
-                    Set up your newsletter domain in Settings to enable automatic newsletter capture. 
-                    Once configured, you'll get a unique email address to subscribe to any newsletter.
-                  </p>
-                  <Button onClick={() => navigate("/settings")}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    Go to Settings
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-4">
-                {/* Compact Email Display */}
-                <Collapsible open={emailDetailsOpen} onOpenChange={setEmailDetailsOpen}>
-                  <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <code className="flex-1 text-sm font-mono break-all">{userNewsletterEmail}</code>
-                    <Button onClick={copyEmailToClipboard} variant="ghost" size="sm">
-                      {copied ? (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <ChevronDown className={`h-4 w-4 transition-transform ${emailDetailsOpen ? "rotate-180" : ""}`} />
-                      </Button>
-                    </CollapsibleTrigger>
-                  </div>
-                  <CollapsibleContent className="mt-2">
-                    <Card>
-                      <CardContent className="pt-4 space-y-3">
-                        <div className="grid gap-2 text-sm">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                            <span>Works with any newsletter (NY Times, Substack, Morning Brew, etc.)</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                            <span>Articles appear automatically as reference cards</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                            <span>AI analyzes content and extracts insights</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                            <span>Rate limited to 50 emails/hour for protection</span>
-                          </div>
-                        </div>
-                        <Alert>
-                          <AlertTriangle className="h-4 w-4" />
-                          <AlertDescription>
-                            <strong>Privacy Note:</strong> This email is unique to your account. 
-                            Only use it for newsletters you trust.
-                          </AlertDescription>
-                        </Alert>
-                      </CardContent>
-                    </Card>
-                  </CollapsibleContent>
-                </Collapsible>
+          <TabsContent value="automated">
+            <p className="text-sm text-muted-foreground mb-4">
+              Newsletters are ingested automatically via the Gmail label watcher — no setup needed here.
+            </p>
 
-                {/* Recent Emails Section */}
-                <Card>
-                  <CardHeader>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
                     <CardTitle className="text-lg">Recent Incoming Emails</CardTitle>
-                    <CardDescription>
-                      Emails received and processed into reference cards
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {loadingEmails ? (
-                      <div className="flex items-center justify-center py-4">
-                        <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <CardDescription>Emails received and processed into reference cards</CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={loadRecentEmails} disabled={loadingEmails}>
+                    <RefreshCw className={`h-3.5 w-3.5 mr-2 ${loadingEmails ? "animate-spin" : ""}`} />Refresh
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingEmails ? (
+                  <div className="flex items-center justify-center py-4">
+                    <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : recentEmails.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No emails received yet.</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>From</TableHead>
+                        <TableHead>Received</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recentEmails.map((email) => (
+                        <TableRow key={email.id}>
+                          <TableCell className="font-medium max-w-[200px] truncate">{email.subject || "No subject"}</TableCell>
+                          <TableCell className="text-muted-foreground max-w-[150px] truncate">{email.from_address || "Unknown"}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{email.received_at ? new Date(email.received_at).toLocaleDateString() : "-"}</TableCell>
+                          <TableCell>
+                            <Badge variant={email.processing_status === "success" ? "default" : "secondary"} className={email.processing_status === "success" ? "bg-green-500/10 text-green-600 border-green-500/20" : ""}>
+                              {(email.processing_status || "pending").replace(/_/g, " ")}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {email.reference_card_id && (
+                              <Button variant="ghost" size="sm" onClick={() => navigate(`/cards/${email.reference_card_id}`)}>
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="mt-4">
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-lg">Reference Cards</CardTitle>
+                    <CardDescription>Cards created from ingested newsletters</CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={loadAutomatedCards} disabled={loadingAutomatedCards}>
+                    <RefreshCw className={`h-3.5 w-3.5 mr-2 ${loadingAutomatedCards ? "animate-spin" : ""}`} />Refresh
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingAutomatedCards ? (
+                  <div className="flex items-center justify-center py-4">
+                    <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : automatedCards.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Rss className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No automated reference cards yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {automatedCards.map((rc: any) => (
+                      <div key={rc.id} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {rc.content_quality === "error" ? (
+                            <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                          ) : rc.content_quality === "partial" || rc.content_quality === "title_only" ? (
+                            <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                          ) : rc.source_type === "newsletter" ? (
+                            <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                          ) : (
+                            <Rss className="h-4 w-4 text-muted-foreground shrink-0" />
+                          )}
+                          <span className="text-sm truncate">{rc.title || "Untitled"}</span>
+                          <Badge variant="outline" className="text-xs shrink-0">{rc.source_type}</Badge>
+                          <Badge variant="outline" className="text-xs shrink-0">{rc.status}</Badge>
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          {(rc.status === "needs_review" || rc.content_quality === "error") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const toastId = toast.loading("Processing with AI...");
+                                const { error } = await supabase.functions.invoke("process-reference-card", { body: { cardId: rc.id } });
+                                if (error) { toast.error("Failed to process: " + error.message, { id: toastId }); }
+                                else { toast.success("Card processed successfully!", { id: toastId }); loadAutomatedCards(); }
+                              }}
+                            >
+                              <Sparkles className="h-3 w-3" />
+                            </Button>
+                          )}
+                          <Button variant="outline" size="sm" onClick={() => navigate(`/cards/${rc.id}`)}>Open</Button>
+                        </div>
                       </div>
-                    ) : recentEmails.length === 0 ? (
-                      <div className="text-center py-6 text-muted-foreground">
-                        <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">No emails received yet.</p>
-                        <p className="text-xs mt-1">Subscribe to a newsletter using your email above to see content here.</p>
-                      </div>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Subject</TableHead>
-                            <TableHead>From</TableHead>
-                            <TableHead>Received</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead></TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {recentEmails.map((email) => (
-                            <TableRow key={email.id}>
-                              <TableCell className="font-medium max-w-[200px] truncate">
-                                {email.subject || "No subject"}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground max-w-[150px] truncate">
-                                {email.from_address || "Unknown"}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground text-sm">
-                                {email.received_at ? new Date(email.received_at).toLocaleDateString() : "-"}
-                              </TableCell>
-                              <TableCell>
-                                <Badge 
-                                  variant={email.processing_status === "success" ? "default" : "secondary"}
-                                  className={email.processing_status === "success" ? "bg-green-500/10 text-green-600 border-green-500/20" : ""}
-                                >
-                                  {email.processing_status || "pending"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {email.reference_card_id && (
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm"
-                                    onClick={() => navigate(`/cards/${email.reference_card_id}`)}
-                                  >
-                                    <ExternalLink className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="manual">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold mb-3">Manual Sources</h2>
+              <Dialog open={manualSourceDialogOpen} onOpenChange={(open) => { setManualSourceDialogOpen(open); if (!open) resetDialog(); }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline"><Plus className="mr-2 h-4 w-4" />Manual Sources</Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Create Manual Source</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    {/* Source type selector */}
+                    <div className="flex gap-2">
+                      <Button
+                        variant={manualSourceType === "url" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setManualSourceType("url")}
+                      >
+                        <LinkIcon className="mr-2 h-4 w-4" />Article URL
+                      </Button>
+                      <Button
+                        variant={manualSourceType === "pdf" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setManualSourceType("pdf")}
+                      >
+                        <FileUp className="mr-2 h-4 w-4" />Upload PDF
+                      </Button>
+                      <Button
+                        variant={manualSourceType === "paste" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setManualSourceType("paste")}
+                      >
+                        <ClipboardPaste className="mr-2 h-4 w-4" />Paste text
+                      </Button>
+                    </div>
+
+                    {/* URL input */}
+                    {manualSourceType === "url" && (
+                      <div className="space-y-2">
+                        <Label>Article URL</Label>
+                        <Input
+                          placeholder="https://example.com/article"
+                          value={manualUrl}
+                          onChange={(e) => setManualUrl(e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    {/* PDF upload */}
+                    {manualSourceType === "pdf" && (
+                      <div className="space-y-2">
+                        <Label>Upload PDF</Label>
+                        <Input
+                          type="file"
+                          accept=".pdf"
+                          onChange={(e) => setManualPdfFile(e.target.files?.[0] || null)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Upload a PDF to extract its content and create a reference card.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Paste text */}
+                    {manualSourceType === "paste" && (
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label>Title <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                          <Input
+                            placeholder="Article title or headline..."
+                            value={pasteTitle}
+                            onChange={(e) => setPasteTitle(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Article text</Label>
+                          <Textarea
+                            placeholder="Paste the full article text here..."
+                            value={pasteText}
+                            onChange={(e) => setPasteText(e.target.value)}
+                            rows={10}
+                            className="resize-y font-mono text-sm"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            {pasteText.length > 0
+                              ? `${pasteText.length.toLocaleString()} characters · ${Math.round(pasteText.split(/\s+/).filter(Boolean).length)} words`
+                              : "Copy the full article text from your browser and paste it here."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Question set */}
+                    <div className="space-y-2">
+                      <Label>Question Set</Label>
+                      <Select value={selectedQuestionSet} onValueChange={setSelectedQuestionSet}>
+                        <SelectTrigger><SelectValue placeholder="Select question set" /></SelectTrigger>
+                        <SelectContent>
+                          {questionSets.map((set) => (
+                            <SelectItem key={set.id} value={set.id}>{set.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Choose which questions to run against this source.
+                      </p>
+                    </div>
+
+                    {/* From company toggle */}
+                    <div className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="space-y-0.5 pr-3">
+                        <Label>From the company (first-party)</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Mark this as {businessName}'s own material so the writer can weight and anchor on it.
+                        </p>
+                      </div>
+                      <Switch checked={manualFromCompany} onCheckedChange={setManualFromCompany} />
+                    </div>
+
+                    <Button onClick={createManualSource} className="w-full" disabled={creatingManualSource}>
+                      {creatingManualSource
+                        ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Creating...</>
+                        : "Create Reference Card"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
             <div className="grid gap-4">
               {manualSources.length === 0 && (
                 <Card>
                   <CardContent className="py-8 text-center">
                     <FileUp className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-lg font-semibold mb-2">No Manual Sources Yet</h3>
-                    <p className="text-muted-foreground mb-4">
-                      Add articles or PDFs manually to create reference cards.
-                    </p>
+                    <p className="text-muted-foreground mb-4">Add articles by URL, PDF, or pasted text.</p>
                     <Button onClick={() => setManualSourceDialogOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add Manual Source
+                      <Plus className="mr-2 h-4 w-4" />Add Manual Source
                     </Button>
                   </CardContent>
                 </Card>
@@ -638,7 +573,7 @@ Reference cards are created from your sources and can be used for content genera
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <CardTitle>{feed.name}</CardTitle>
-                        <CardDescription className="mt-1">{feed.url}</CardDescription>
+                        <CardDescription className="mt-1">{feed.url || "Pasted or uploaded content"}</CardDescription>
                       </div>
                       <Button variant="ghost" size="sm" onClick={() => deleteFeed(feed.id, feed.name)}>
                         <Trash2 className="h-4 w-4" />
@@ -646,15 +581,10 @@ Reference cards are created from your sources and can be used for content genera
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      Added: {new Date(feed.created_at).toLocaleDateString()}
-                    </p>
-
+                    <p className="text-sm text-muted-foreground">Added: {new Date(feed.created_at).toLocaleDateString()}</p>
                     <div className="mt-3">
                       <Button variant="ghost" size="sm" onClick={() => toggleFeedExpanded(feed.id)}>
-                        <ChevronDown
-                          className={`h-4 w-4 mr-1 transition-transform ${expandedFeeds.has(feed.id) ? "rotate-180" : ""}`}
-                        />
+                        <ChevronDown className={`h-4 w-4 mr-1 transition-transform ${expandedFeeds.has(feed.id) ? "rotate-180" : ""}`} />
                         Reference Cards ({refCardsByFeed[feed.id]?.length ?? 0})
                       </Button>
                       {expandedFeeds.has(feed.id) && (
@@ -674,28 +604,20 @@ Reference cards are created from your sources and can be used for content genera
                               </div>
                               <div className="flex gap-1">
                                 {(rc.status === "needs_review" || rc.content_quality === "error") && (
-                                  <Button 
-                                    variant="outline" 
+                                  <Button
+                                    variant="outline"
                                     size="sm"
                                     onClick={async () => {
                                       const toastId = toast.loading("Processing with AI...");
-                                      const { error } = await supabase.functions.invoke("process-reference-card", {
-                                        body: { cardId: rc.id }
-                                      });
-                                      if (error) {
-                                        toast.error("Failed to process: " + error.message, { id: toastId });
-                                      } else {
-                                        toast.success("Card processed successfully!", { id: toastId });
-                                        loadFeeds();
-                                      }
+                                      const { error } = await supabase.functions.invoke("process-reference-card", { body: { cardId: rc.id } });
+                                      if (error) { toast.error("Failed to process: " + error.message, { id: toastId }); }
+                                      else { toast.success("Card processed successfully!", { id: toastId }); loadFeeds(); }
                                     }}
                                   >
                                     <Sparkles className="h-3 w-3" />
                                   </Button>
                                 )}
-                                <Button variant="outline" size="sm" onClick={() => navigate(`/cards/${rc.id}`)}>
-                                  Open
-                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => navigate(`/cards/${rc.id}`)}>Open</Button>
                               </div>
                             </div>
                           ))}
@@ -710,6 +632,10 @@ Reference cards are created from your sources and can be used for content genera
                 </Card>
               ))}
             </div>
+          </TabsContent>
+
+          <TabsContent value="observations">
+            <ObservationsTab />
           </TabsContent>
         </Tabs>
       </main>
